@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<!-- 내 방의 비밀정리 프로토타입의 진입점이다. 스크립트를 라이브러리, 설정, 데이터, 모듈, 장면, sketch.js 순서로 불러온다. -->
+<!-- ES 모듈과 fetch를 쓰지 않으므로 file://로 열어도, Live Server나 GitHub Pages로 열어도 똑같이 동작한다. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>내 방의 비밀정리 프로토타입</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <script src="lib/p5.min.js"></script>
+  <script src="config.js"></script>
+  <script src="data/zones.js"></script>
+  <script src="data/items.js"></script>
+  <script src="data/endings.js"></script>
+  <script src="src/timer.js"></script>
+  <script src="src/gestures.js"></script>
+  <script src="src/scoring.js"></script>
+  <script src="src/itemManager.js"></script>
+  <script src="src/ui.js"></script>
+  <script src="src/scenes/intro.js"></script>
+  <script src="src/scenes/room.js"></script>
+  <script src="src/scenes/zone.js"></script>
+  <script src="src/scenes/flashback.js"></script>
+  <script src="src/scenes/result.js"></script>
+  <script src="sketch.js"></script>
+</body>
+</html>
