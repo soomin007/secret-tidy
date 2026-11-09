@@ -38,6 +38,7 @@ const Game = {
     if (this.sceneName === 'result') return;
     ItemManager.cancelPress();
     GameTimer.stop();
+    PlayLog.add('finish', { reason, remaining: GameTimer.wholeSeconds() });
     this.goTo('result', { reason, result: this.currentResult() });
   },
 
@@ -50,6 +51,7 @@ const Game = {
   reset() {
     GameTimer.reset(CONFIG.TIME_LIMIT_SEC);
     ItemManager.reset();
+    PlayLog.reset();
     this.toast = null;
     this.goTo('intro');
   },
@@ -163,15 +165,19 @@ function mouseReleased() {
   Game.scene.released(toLogical(mouseX, mouseY));
 }
 
-// 디버그 표시(D)의 실시간 점수와 구역별 남은 개수
+// 디버그 표시(D)의 실시간 점수, 구역별 남은 개수, 플레이 기록 진행
 function drawDebugInfo() {
   const r = Game.currentResult();
   const counts = Game.remainingByZone();
   const zoneText = ZONES.map(z => z.name + ' ' + counts[z.id]).join(', ');
+  const opened = ItemManager.covers.filter(c => c.open).length;
+  const misses = PlayLog.events.filter(e => e.type === 'miss').length;
   UI.drawDebugInfo([
     '실시간 점수 ' + r.total + ' (숨김 ' + r.hideScore + ', 청소 ' + r.cleanScore +
       ', 보너스 ' + r.timeBonus + ', 감점 ' + r.penalty + ')',
-    '지금 끝나면 ' + ENDINGS[r.ending].name + ', 남은 일 ' + zoneText
+    '지금 끝나면 ' + ENDINGS[r.ending].name + ', 남은 일 ' + zoneText,
+    '연 덮개 ' + opened + '/' + ItemManager.covers.length + '개, 처음 집은 물건 ' +
+      Object.keys(PlayLog.touched).length + '개, 빈 곳 누름 ' + misses + '번'
   ]);
 }
 

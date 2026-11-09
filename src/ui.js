@@ -19,6 +19,8 @@ const UI = {
     roomBg: [222, 217, 207],
     zoneBg: [236, 233, 226],
     zoneRect: [247, 244, 237],
+    cover: [188, 182, 172],        // 닫힌 덮개. 물건 종류 색과 겹치지 않는 회색
+    coverOpen: [160, 154, 144],    // 연 덮개의 점선 테두리
     debugBadge: [255, 214, 0]
   },
 
@@ -38,6 +40,16 @@ const UI = {
     ex_gift: [246, 176, 176],
     own_goods: [170, 222, 182],
     photo: [247, 219, 133]
+  },
+  // ITEM_LABELS가 'kind'일 때 물건 위에 쓰는 종류 이름. 선물과 내 물건은 똑같이 '소품'이다.
+  KIND_LABEL: {
+    ex_gift: '소품',
+    own_goods: '소품',
+    photo: '사진',
+    trash: '쓰레기',
+    laundry: '빨래',
+    blanket: '이불',
+    stain: '얼룩'
   },
 
   // 근접 컷에서 장소 이름 아래에 두는 버튼
@@ -132,13 +144,22 @@ const UI = {
     pop();
   },
 
-  // 물건 하나를 r 위치에 그린다. 둥근 사각형 가운데에 이름을 쓰고, 마우스를 올리면 테두리를 굵게 한다.
+  // 물건 위에 쓸 글자. mode는 CONFIG.ITEM_LABELS이고, 디버그 표시를 켜면 언제나 이름 전체를 쓴다.
+  itemLabel(state, mode, debug) {
+    const kind = state.def.kind;
+    const folded = kind === 'blanket' && state.status === 'done' ? ' (다 갬)' : '';
+    if (debug || mode === 'name') return state.def.name + folded;
+    if (mode === 'kind') return (this.KIND_LABEL[kind] || '') + folded;
+    return '';
+  },
+
+  // 물건 하나를 r 위치에 그린다. 둥근 사각형 가운데에 ITEM_LABELS에 따른 글자를 쓰고, 마우스를 올리면 테두리를 굵게 한다.
   // 사진은 이중 테두리로 액자처럼 그리고, 얼룩은 닦은 만큼 옅게 그린다. opts: { hover, debug }
   drawItem(state, r, opts = {}) {
     const kind = state.def.kind;
     const fillColor = (opts.debug && this.DEBUG_FILL[kind]) || this.KIND_FILL[kind] || [255, 255, 255];
     const alpha = kind === 'stain' ? CONFIG.STAIN_START_ALPHA * (1 - ItemManager.wipeProgress(state)) : 255;
-    const label = state.def.name + (kind === 'blanket' && state.status === 'done' ? ' (다 갬)' : '');
+    const label = this.itemLabel(state, CONFIG.ITEM_LABELS, opts.debug);
 
     push();
     fill(...fillColor, alpha);
@@ -151,12 +172,14 @@ const UI = {
       rect(r.x + 7, r.y + 7, r.w - 14, r.h - 14, 4);
     }
 
-    noStroke();
-    fill(...this.COLOR.ink, alpha);
-    textAlign(CENTER, CENTER);
-    textStyle(NORMAL);
-    this.fitTextSize(label, r.w - 14, 15, 10);
-    text(label, r.x + r.w / 2, r.y + r.h / 2);
+    if (label) {
+      noStroke();
+      fill(...this.COLOR.ink, alpha);
+      textAlign(CENTER, CENTER);
+      textStyle(NORMAL);
+      this.fitTextSize(label, r.w - 14, 15, 10);
+      text(label, r.x + r.w / 2, r.y + r.h / 2);
+    }
 
     if (opts.debug) {
       let extra = '';
@@ -164,6 +187,34 @@ const UI = {
       if (kind === 'stain') extra = ' 닦기 ' + Math.round(state.wipeDistance) + '/' + CONFIG.WIPE_DISTANCE;
       this.drawDebugFrame(r, state.def.id + extra);
     }
+    pop();
+  },
+
+  // 덮개. 닫힌 덮개는 이름을 쓴 회색 판이고, 연 덮개는 흐린 점선 테두리만 남는다.
+  // 열 수 있는 것은 모두 같은 모양으로 그려서, 하나를 열어 보면 나머지도 열 수 있다는 것을 알게 한다. opts: { hover, debug }
+  drawCover(cover, opts = {}) {
+    const d = cover.def;
+    push();
+    if (cover.open) {
+      noFill();
+      stroke(...this.COLOR.coverOpen);
+      strokeWeight(1.5);
+      drawingContext.setLineDash([6, 6]);
+      rect(d.x, d.y, d.w, d.h, 14);
+      drawingContext.setLineDash([]);
+    } else {
+      fill(...this.COLOR.cover);
+      stroke(...this.COLOR.line);
+      strokeWeight(opts.hover ? 4.5 : 2);
+      rect(d.x, d.y, d.w, d.h, 14);
+      noStroke();
+      fill(...this.COLOR.ink);
+      textAlign(CENTER, CENTER);
+      textStyle(BOLD);
+      this.fitTextSize(d.name, d.w - 16, 17, 11);
+      text(d.name, d.x + d.w / 2, d.y + d.h / 2);
+    }
+    if (opts.debug) this.drawDebugFrame(d, d.id + (d.hides.length ? ' ' + d.hides.join(', ') : ' (빈 덮개)'));
     pop();
   },
 

@@ -1,6 +1,6 @@
 // 결과 장면이다. 시간이 다 되거나 "문 열어 주기"를 확정하면 오고, "다시 하기"를 누르면 모든 상태를 처음으로 되돌린다.
 // 엔딩 이름과 한 줄 문구, 점수 내역과 합계, 남은 시간, 숨기지 못한 물건과 잘못 숨긴 물건 목록을 보여 준다.
-// 목록은 플레이테스트 관찰용으로 일부러 자세히 보여 준다.
+// 목록은 플레이테스트 관찰용으로 일부러 자세히 보여 준다. 디버그 표시(D)를 켜면 목록 대신 플레이 기록이 보인다.
 
 const SceneResult = {
   RETRY_BUTTON: { x: 540, y: 610, w: 200, h: 64, label: '다시 하기' },
@@ -15,10 +15,12 @@ const SceneResult = {
 
   reason: '',
   result: null,
+  playSummary: null,
 
   enter(params) {
     this.reason = params.reason;
     this.result = params.result;
+    this.playSummary = PlayLog.summarize(PlayLog.events, ItemManager.snapshot(), ItemManager.coverSnapshot(), params.result, CONFIG);
   },
 
   update() {},
@@ -43,7 +45,8 @@ const SceneResult = {
     if (r.questionItem) this.drawQuestionItem(r.questionItem);
 
     const panelBottom = this.drawScores(r);
-    this.drawLists(r, panelBottom);
+    if (Game.debugView && this.playSummary) this.drawPlayLog(this.playSummary, panelBottom);
+    else this.drawLists(r, panelBottom);
 
     UI.drawButton(this.RETRY_BUTTON, { hover: this.isClickable(m), textSize: 22 });
   },
@@ -202,6 +205,45 @@ const SceneResult = {
         text(item.name, col.x, p.y + 72 + i * 27);
       });
     }
+    pop();
+  },
+
+  // 숨은 물건 찾기 시험에서 보는 지표. 디버그 표시를 켰을 때 목록 자리에 그린다.
+  drawPlayLog(k, bottom) {
+    const p = this.LIST_PANEL;
+    push();
+    fill(255);
+    stroke(...UI.COLOR.line);
+    strokeWeight(1.5);
+    rect(p.x, p.y, p.w, bottom - p.y, 12);
+    noStroke();
+    textAlign(LEFT, CENTER);
+    textStyle(BOLD);
+    textSize(18);
+    fill(...UI.COLOR.ink);
+    text('플레이 기록', p.x + 24, p.y + 32);
+
+    const zoneName = id => (ZONES.find(z => z.id === id) || { name: id }).name;
+    const revisitText = Object.keys(k.revisitsByZone).filter(z => k.revisitsByZone[z] > 0)
+      .map(z => zoneName(z) + ' ' + k.revisitsByZone[z]).join(', ');
+    const u = k.untouched;
+    const lines = [
+      k.allClear
+        ? '다 치우고 남은 시간 ' + GameTimer.format(k.remaining) + ', 물건 하나에 ' + k.budgetPerItem.toFixed(1) + '초 여유'
+        : '다 치우지 못하고 끝남, 남은 시간 ' + GameTimer.format(k.remaining || 0),
+      '물건 하나 찾는 데 걸린 시간 중앙값 ' + (k.findMedian === null ? '없음' : k.findMedian.toFixed(1) + '초') + ' (' + k.findCount + '개)',
+      '손대지 않은 물건 ' + u.total + '개 (숨길 것 ' + u.mustHide + ', 청소 ' + u.clean + ', 그 밖 ' + u.other + ')',
+      '그중 닫힌 덮개 밑에 남은 물건 ' + u.underClosedCover + '개',
+      '연 덮개 ' + k.coversOpened + '/' + k.coversTotal + '개, 그중 빈 덮개 ' + k.emptyOpened + '/' + k.emptyTotal + '개',
+      '구역에 다시 들어간 횟수 ' + k.revisits + '번' + (revisitText ? ' (' + revisitText + ')' : ''),
+      '빈 곳 누른 횟수 ' + k.misses + '번, 회상 ' + k.flashbacks + '번'
+    ];
+    textStyle(NORMAL);
+    lines.forEach((line, i) => {
+      fill(...(i === 0 ? UI.COLOR.ink : UI.COLOR.subInk));
+      UI.fitTextSize(line, p.w - 48, 16, 11);
+      text(line, p.x + 24, p.y + 72 + i * 31);
+    });
     pop();
   },
 

@@ -6,11 +6,13 @@ const GameTimer = {
   remaining: 0,     // 남은 시간(초, 소수까지)
   running: false,   // 인트로를 떠난 뒤부터 결과에 닿기 전까지 true
   paused: false,    // 개발용 일시정지. 디버그 키 P로만 켠다
+  elapsed: 0,       // 타이머가 실제로 흐른 시간(초). 디버그 키 [ ] 로 남은 시간을 바꿔도 이 값은 그대로다
 
   reset(limitSec) {
     this.remaining = limitSec;
     this.running = false;
     this.paused = false;
+    this.elapsed = 0;
   },
 
   start() {
@@ -34,6 +36,7 @@ const GameTimer = {
   update(dtSec) {
     if (!this.running || this.paused) return;
     this.remaining = Math.max(0, this.remaining - dtSec);
+    this.elapsed += dtSec;
   },
 
   isOver() {

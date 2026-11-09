@@ -1,5 +1,5 @@
 // 물건 서른 개의 상태(방에 있는지, 어디에 넣었는지, 제스처 진행도, 회상 여부)를 관리한다.
-// 마우스를 누른 곳의 물건 찾기, 집어서 끌기, 놓기 판정, 제스처 입력 누적도 여기서 한다.
+// 마우스를 누른 곳의 덮개 열기와 물건 찾기, 집어서 끌기, 놓기 판정, 제스처 입력 누적도 여기서 한다.
 // 그리기는 하지 않는다. 화면은 근접 컷 장면(scenes/zone.js)이 이 상태를 읽어서 그린다.
 
 const ItemManager = {
@@ -8,6 +8,7 @@ const ItemManager = {
   states: [],
   targetCounts: {},   // '장소:대상종류' → 넣은 개수. 예: 'closet:hide' → 2
   wrongDrops: 0,      // 받지 않는 대상에 놓은 횟수
+  covers: [],         // 덮개마다 { def, open }. COVERS_ENABLED가 false면 비어 있다
   // 지금 누르고 있는 동작. 종류에 따라 담는 값이 다르다.
   // { mode: 'drag', item, offset, pos } 집어서 끄는 중
   // { mode: 'fold', item, start }        이불 위에서 누른 채 쓰는 중
@@ -29,6 +30,8 @@ const ItemManager = {
     }
     this.wrongDrops = 0;
     this.press = null;
+    const coverDefs = CONFIG.COVERS_ENABLED && typeof COVERS !== 'undefined' ? COVERS : [];
+    this.covers = coverDefs.map(def => ({ def, open: false }));
   },
 
   statesIn(zoneId) {
@@ -40,8 +43,33 @@ const ItemManager = {
   },
 
   // 화면에 그릴 물건인지. 다 갠 이불은 접힌 모양으로 남고, 다 닦은 얼룩은 사라진다.
+  // 닫힌 덮개 밑에 있는 물건은 그리지 않는다.
   isVisible(s) {
-    return s.status === 'present' || (s.status === 'done' && s.def.kind === 'blanket');
+    const shown = s.status === 'present' || (s.status === 'done' && s.def.kind === 'blanket');
+    return shown && !this.isCovered(s);
+  },
+
+  coversIn(zoneId) {
+    return this.covers.filter(c => c.def.zone === zoneId);
+  },
+
+  // 이 물건을 가리는 덮개(없으면 null). 열린 덮개도 돌려준다.
+  coverOver(itemId) {
+    return this.covers.find(c => c.def.hides.includes(itemId)) || null;
+  },
+
+  isCovered(s) {
+    const c = this.coverOver(s.def.id);
+    return c !== null && !c.open;
+  },
+
+  // 마우스 아래의 닫힌 덮개. 연 덮개는 다시 닫히지 않으므로 누를 수 없다.
+  coverAt(zoneId, p) {
+    for (let i = this.covers.length - 1; i >= 0; i--) {
+      const c = this.covers[i];
+      if (c.def.zone === zoneId && !c.open && UI.inRect(p, c.def)) return c;
+    }
+    return null;
   },
 
   // 물건이 지금 차지하는 사각형. 이불은 쓸 때마다 높이가 줄어든다(아래쪽 모서리는 그대로).
@@ -67,7 +95,7 @@ const ItemManager = {
   itemAt(zoneId, p) {
     for (let i = this.states.length - 1; i >= 0; i--) {
       const s = this.states[i];
-      if (s.def.zone !== zoneId || s.status !== 'present') continue;
+      if (s.def.zone !== zoneId || s.status !== 'present' || this.isCovered(s)) continue;
       if (UI.inRect(p, this.currentRect(s))) return s;
     }
     return null;
@@ -87,9 +115,15 @@ const ItemManager = {
   },
 
   // 마우스를 눌렀을 때 부른다. 무엇이 시작됐는지 { action, item }으로 돌려주고, 아무것도 없으면 null이다.
-  // action: 'drag'(집기), 'fold'(이불 쓸기), 'wipe'(얼룩 닦기), 'flashback'(사진 회상)
+  // action: 'cover'(덮개 열기, item 대신 cover), 'drag'(집기), 'fold'(이불 쓸기), 'wipe'(얼룩 닦기), 'flashback'(사진 회상)
   pressAt(zoneId, p) {
     this.press = null;
+    // 닫힌 덮개는 물건 위에 있으므로 먼저 본다. 한 번 누르면 열리고 다시 닫히지 않는다.
+    const cover = this.coverAt(zoneId, p);
+    if (cover) {
+      cover.open = true;
+      return { action: 'cover', cover };
+    }
     const s = this.itemAt(zoneId, p);
     if (!s) return null;
     if (s.def.kind === 'photo' && s.flashbackPending) {
@@ -204,5 +238,10 @@ const ItemManager = {
       status: s.status,
       storedIn: s.storedIn
     }));
+  },
+
+  // 플레이 기록에 넘길 덮개 상태
+  coverSnapshot() {
+    return this.covers.map(c => ({ id: c.def.id, zone: c.def.zone, open: c.open, hides: c.def.hides.slice() }));
   }
 };

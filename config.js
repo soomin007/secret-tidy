@@ -37,6 +37,10 @@ const CONFIG = {
     trash: ['trash'],
     laundry: ['laundry']
   },
+  // 숨은 물건 찾기 시험용. false면 덮개가 없어지고 모든 물건이 처음부터 보인다.
+  COVERS_ENABLED: true,            // 덮개(data/covers.js)를 열어야 그 밑의 물건이 보인다
+  // 물건 위에 쓰는 글자. 'none'은 글자 없음(이름은 집었을 때 메모 카드에만), 'kind'는 쓰레기나 빨래 같은 종류만, 'name'은 이름 전체
+  ITEM_LABELS: 'none',
   BLANKET_FOLDED_HEIGHT: 0.3,      // 다 갠 이불의 높이(처음 높이 대비 비율)
   STAIN_START_ALPHA: 200,          // 닦기 전 얼룩의 불투명도(0~255)
   TOAST_SEC: 1.6,                  // 놓기가 거절됐을 때 안내 문구가 떠 있는 시간(초)

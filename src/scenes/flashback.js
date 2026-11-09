@@ -17,7 +17,7 @@ const SceneFlashback = {
   // dt는 게임 시간이다. 개발용 일시정지 중에는 0이 들어와 회상도 멈춘다.
   update(dt) {
     this.elapsed += dt;
-    if (this.elapsed >= CONFIG.FLASHBACK_SEC) Game.goTo('zone', { zoneId: this.zoneId });
+    if (this.elapsed >= CONFIG.FLASHBACK_SEC) Game.goTo('zone', { zoneId: this.zoneId, resume: true });
   },
 
   draw() {
