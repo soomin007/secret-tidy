@@ -2,7 +2,7 @@
 // 같은 근접 컷으로 저절로 돌아간다. 회상 중에는 입력을 받지 않지만 HUD 타이머는 계속 보이며 줄어든다.
 
 const SceneFlashback = {
-  BAR: { x: 340, y: 390, w: 600, h: 16 },
+  BAR: { x: 440, y: 470, w: 400, h: 10 },
 
   zoneId: null,
   itemId: null,
@@ -24,14 +24,24 @@ const SceneFlashback = {
     SceneZone.drawScene(null);
 
     noStroke();
-    fill(12, 12, 22, 215);
+    fill(16, 14, 12, 215);
     rect(0, 0, UI.W, UI.H);
 
-    fill(235);
+    // 회상 장면이 들어갈 자리다. 회상을 부른 사진을 크게 띄워 둔다.
+    push();
+    translate(UI.W / 2, 290);
+    rotate(-0.03);
+    ART.begin(1, 2);
+    ART.poly(ART.rect4(-150, -110, 300, 220), ART.C.item);
+    ART.figures(-132, -92, 264, 166);
+    ART.end();
+    pop();
+
+    fill(214, 207, 196);
     textAlign(CENTER, CENTER);
-    textStyle(BOLD);
-    textSize(36);
-    text('[임시] 회상 장면', UI.W / 2, 330);
+    textStyle(NORMAL);
+    textSize(18);
+    text('회상 장면 자리', UI.W / 2, 438);
 
     const ratio = Math.min(1, this.elapsed / CONFIG.FLASHBACK_SEC);
     const bar = this.BAR;

@@ -1,6 +1,6 @@
-// 여러 장면이 함께 쓰는 그리기 도구를 모은다. 색, 버튼, HUD, 안내 문구, DEBUG 표시가 여기 있다.
+// 여러 장면이 함께 쓰는 화면 도구를 모은다. 색, 버튼, HUD, 메모 카드, 안내 문구, DEBUG 표시가 여기 있다.
+// 물건, 덮개, 드롭 대상의 모양은 src/art.js가 그리고, 여기서는 그 위에 글자와 디버그 표시를 얹는다.
 // 모든 좌표는 1280×720 논리 좌표이고, 창 크기에 맞춘 확대와 축소는 sketch.js가 맡는다.
-// 그래픽은 일부러 색 상자와 글자 수준에 머문다. 완성본처럼 보이면 안 된다.
 
 const UI = {
   W: 1280,
@@ -8,34 +8,22 @@ const UI = {
 
   COLOR: {
     margin: [17, 17, 17],          // 그림 밖 여백
-    ink: [34, 34, 34],             // 기본 글자
-    subInk: [96, 96, 96],          // 보조 글자
-    line: [68, 68, 68],            // 테두리
-    button: [45, 45, 45],
-    buttonHover: [92, 92, 92],
-    buttonDisabled: [178, 178, 178],
-    warning: [214, 40, 40],        // 30초 이하 타이머
-    introBg: [32, 36, 44],
-    roomBg: [222, 217, 207],
-    zoneBg: [236, 233, 226],
-    zoneRect: [247, 244, 237],
-    cover: [188, 182, 172],        // 닫힌 덮개. 물건 종류 색과 겹치지 않는 회색
-    coverOpen: [160, 154, 144],    // 연 덮개의 점선 테두리
+    ink: [52, 48, 43],             // 기본 글자
+    subInk: [118, 111, 102],       // 보조 글자
+    line: [70, 64, 56],            // 테두리
+    paper: [244, 241, 235],        // 결과 화면 바탕
+    button: [58, 54, 49],
+    buttonHover: [96, 89, 80],
+    buttonDisabled: [190, 184, 175],
+    warning: [196, 52, 44],        // 30초 이하 타이머
+    introBg: [38, 36, 34],
+    memo: [255, 251, 232],         // 메모 카드
+    cover: ART.C.cover,            // 닫힌 덮개의 바탕색. 물건 종류 색과 겹치지 않는 회녹색
     debugBadge: [255, 214, 0]
   },
 
-  // 물건 종류별 바탕색. 선물과 내 물건은 일부러 같은 색과 모양으로 그린다.
-  // 메모를 읽어야만 둘을 구분할 수 있다는 것이 이 게임의 핵심 판단이다.
-  KIND_FILL: {
-    ex_gift: [255, 255, 255],
-    own_goods: [255, 255, 255],
-    photo: [255, 255, 255],
-    trash: [234, 226, 197],
-    laundry: [206, 226, 243],
-    blanket: [222, 212, 239],
-    stain: [196, 160, 112]
-  },
-  // 디버그 표시(D)를 켰을 때만 쓰는 종류별 색
+  // 디버그 표시(D)를 켰을 때만 쓰는 종류별 색. 평소에는 선물과 내 물건과 사진이 모두 같은 흰색이다.
+  // 메모를 읽어야만 선물과 내 물건을 구분할 수 있다는 것이 이 게임의 핵심 판단이다.
   DEBUG_FILL: {
     ex_gift: [246, 176, 176],
     own_goods: [170, 222, 182],
@@ -58,6 +46,12 @@ const UI = {
   TIMER_BOX: { x: 1114, y: 16, w: 150, h: 56 },
   // 물건을 들고 있는 동안 화면 아래 가운데에 뜨는 메모 카드
   MEMO_CARD: { x: 320, y: 628, w: 640, h: 78 },
+
+  // 데이터의 이름과 메모는 아직 임시라서 모두 '[임시]'로 시작한다. 화면에는 그 머리말을 빼고 쓰고,
+  // 임시라는 표시는 메모 카드와 결과 화면 구석에 한 번만 둔다.
+  plain(str) {
+    return String(str).replace(/^\[임시\]\s*/, '');
+  },
 
   inRect(p, r) {
     return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
@@ -82,8 +76,8 @@ const UI = {
     return m + '분 ' + s + '초';
   },
 
-  // 버튼 하나를 그린다. opts.variant가 'light'면 흰 바탕에 검은 글자다.
-  // opts.disabled는 물건을 들고 있는 동안처럼 버튼이 반응하지 않을 때 쓴다.
+  // 버튼 하나를 그린다. opts.variant가 'light'면 흰 바탕에 짙은 글자다.
+  // opts.disabled는 물건을 들고 있는 동안처럼 버튼이 반응하지 않을 때 쓴다. opts.back이면 글자 앞에 왼쪽 화살촉을 그린다.
   drawButton(btn, opts = {}) {
     const light = opts.variant === 'light';
     push();
@@ -92,20 +86,36 @@ const UI = {
       fill(...this.COLOR.buttonDisabled);
       stroke(...this.COLOR.buttonDisabled);
     } else if (light) {
-      fill(opts.hover ? 228 : 255);
+      fill(opts.hover ? 232 : 255);
       stroke(...this.COLOR.line);
     } else {
       fill(...(opts.hover ? this.COLOR.buttonHover : this.COLOR.button));
       stroke(...this.COLOR.button);
     }
-    rect(btn.x, btn.y, btn.w, btn.h, 10);
+    rect(btn.x, btn.y, btn.w, btn.h, 8);
 
     noStroke();
-    fill(light && !opts.disabled ? 34 : 255);
+    const ink = light && !opts.disabled ? this.COLOR.ink : [255, 255, 255];
+    fill(...ink);
     textAlign(CENTER, CENTER);
     textStyle(BOLD);
-    this.fitTextSize(btn.label, btn.w - 20, opts.textSize || 20, 12);
-    text(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2);
+    const size = this.fitTextSize(btn.label, btn.w - (opts.back ? 44 : 20), opts.textSize || 20, 12);
+    let cx = btn.x + btn.w / 2;
+    if (opts.back) {
+      const tw = textWidth(btn.label);
+      cx += 9;
+      const ax = cx - tw / 2 - 14;
+      const ay = btn.y + btn.h / 2;
+      stroke(...ink);
+      strokeWeight(2.5);
+      noFill();
+      line(ax + 5, ay - 6, ax - 1, ay);
+      line(ax - 1, ay, ax + 5, ay + 6);
+      noStroke();
+      fill(...ink);
+    }
+    textSize(size);
+    text(btn.label, cx, btn.y + btn.h / 2);
     pop();
   },
 
@@ -116,7 +126,7 @@ const UI = {
     textStyle(BOLD);
     textSize(22);
     const nameW = textWidth(placeName) + 36;
-    fill(255, 255, 255, 235);
+    fill(255, 255, 255, 240);
     stroke(...this.COLOR.line);
     strokeWeight(1.5);
     rect(16, 16, nameW, 44, 8);
@@ -126,12 +136,12 @@ const UI = {
     text(placeName, 34, 38);
 
     if (opts.backButton) {
-      this.drawButton(this.BACK_BUTTON, { hover: opts.backHover, disabled: opts.backDisabled, textSize: 19 });
+      this.drawButton(this.BACK_BUTTON, { hover: opts.backHover, disabled: opts.backDisabled, textSize: 19, back: true });
     }
 
     const warn = GameTimer.isWarning();
     const box = this.TIMER_BOX;
-    fill(255, 255, 255, 235);
+    fill(255, 255, 255, 240);
     stroke(...(warn ? this.COLOR.warning : this.COLOR.line));
     strokeWeight(warn ? 3 : 1.5);
     rect(box.x, box.y, box.w, box.h, 8);
@@ -148,74 +158,46 @@ const UI = {
   itemLabel(state, mode, debug) {
     const kind = state.def.kind;
     const folded = kind === 'blanket' && state.status === 'done' ? ' (다 갬)' : '';
-    if (debug || mode === 'name') return state.def.name + folded;
+    if (debug || mode === 'name') return this.plain(state.def.name) + folded;
     if (mode === 'kind') return (this.KIND_LABEL[kind] || '') + folded;
     return '';
   },
 
-  // 물건 하나를 r 위치에 그린다. 둥근 사각형 가운데에 ITEM_LABELS에 따른 글자를 쓰고, 마우스를 올리면 테두리를 굵게 한다.
-  // 사진은 이중 테두리로 액자처럼 그리고, 얼룩은 닦은 만큼 옅게 그린다. opts: { hover, debug }
+  // 물건 하나를 r 위치에 그린다. 모양은 src/art.js가 그리고, ITEM_LABELS에 따른 글자를 아래쪽에 얹는다.
+  // opts: { hover, lift, debug }
   drawItem(state, r, opts = {}) {
-    const kind = state.def.kind;
-    const fillColor = (opts.debug && this.DEBUG_FILL[kind]) || this.KIND_FILL[kind] || [255, 255, 255];
-    const alpha = kind === 'stain' ? CONFIG.STAIN_START_ALPHA * (1 - ItemManager.wipeProgress(state)) : 255;
+    ART.item(state, r, opts);
     const label = this.itemLabel(state, CONFIG.ITEM_LABELS, opts.debug);
-
-    push();
-    fill(...fillColor, alpha);
-    stroke(...this.COLOR.line, alpha);
-    strokeWeight(opts.hover ? 4.5 : 2);
-    rect(r.x, r.y, r.w, r.h, 10);
-    if (kind === 'photo') {
-      noFill();
-      strokeWeight(1.5);
-      rect(r.x + 7, r.y + 7, r.w - 14, r.h - 14, 4);
-    }
-
     if (label) {
-      noStroke();
-      fill(...this.COLOR.ink, alpha);
-      textAlign(CENTER, CENTER);
+      push();
       textStyle(NORMAL);
-      this.fitTextSize(label, r.w - 14, 15, 10);
-      text(label, r.x + r.w / 2, r.y + r.h / 2);
+      const size = this.fitTextSize(label, r.w - 10, 14, 10);
+      const w = Math.min(textWidth(label), r.w - 10) + 12;
+      const y = r.y + r.h - 12 - (opts.lift || (opts.hover ? 3 : 0));
+      noStroke();
+      fill(255, 255, 255, 215);
+      rect(r.x + r.w / 2 - w / 2, y - 10, w, 20, 4);
+      fill(...this.COLOR.ink);
+      textAlign(CENTER, CENTER);
+      textSize(size);
+      text(label, r.x + r.w / 2, y);
+      pop();
     }
-
     if (opts.debug) {
+      const kind = state.def.kind;
       let extra = '';
       if (kind === 'blanket') extra = ' 쓸기 ' + state.foldStrokes + '/' + CONFIG.FOLD_STROKES;
       if (kind === 'stain') extra = ' 닦기 ' + Math.round(state.wipeDistance) + '/' + CONFIG.WIPE_DISTANCE;
       this.drawDebugFrame(r, state.def.id + extra);
     }
-    pop();
   },
 
-  // 덮개. 닫힌 덮개는 이름을 쓴 회색 판이고, 연 덮개는 흐린 점선 테두리만 남는다.
-  // 열 수 있는 것은 모두 같은 모양으로 그려서, 하나를 열어 보면 나머지도 열 수 있다는 것을 알게 한다. opts: { hover, debug }
+  // 덮개. 닫힌 덮개는 이름에 맞는 모양(서랍, 책 더미, 베개 등)을 같은 덮개 색으로 그리고, 연 덮개는 흐리게 남긴다.
+  // 열 수 있는 것은 모두 같은 색이라서, 하나를 열어 보면 나머지도 열 수 있다는 것을 알게 된다. opts: { hover, debug }
   drawCover(cover, opts = {}) {
+    ART.cover(cover, opts);
     const d = cover.def;
-    push();
-    if (cover.open) {
-      noFill();
-      stroke(...this.COLOR.coverOpen);
-      strokeWeight(1.5);
-      drawingContext.setLineDash([6, 6]);
-      rect(d.x, d.y, d.w, d.h, 14);
-      drawingContext.setLineDash([]);
-    } else {
-      fill(...this.COLOR.cover);
-      stroke(...this.COLOR.line);
-      strokeWeight(opts.hover ? 4.5 : 2);
-      rect(d.x, d.y, d.w, d.h, 14);
-      noStroke();
-      fill(...this.COLOR.ink);
-      textAlign(CENTER, CENTER);
-      textStyle(BOLD);
-      this.fitTextSize(d.name, d.w - 16, 17, 11);
-      text(d.name, d.x + d.w / 2, d.y + d.h / 2);
-    }
     if (opts.debug) this.drawDebugFrame(d, d.id + (d.hides.length ? ' ' + d.hides.join(', ') : ' (빈 덮개)'));
-    pop();
   },
 
   // 디버그 표시: 판정 영역 테두리와 id
@@ -234,51 +216,45 @@ const UI = {
     pop();
   },
 
-  // 드롭 대상은 점선 테두리 사각형에 이름과 넣은 개수를 쓴다.
+  // 드롭 대상(숨김 상자, 휴지통, 빨래 바구니). 이름표에 이름과 넣은 개수를 쓴다.
   // 물건을 들고 그 위에 올라가 있으면 highlight가 true다.
   drawTarget(target, count, highlight, debug) {
-    push();
-    fill(255, 255, 255, highlight ? 175 : 90);
-    stroke(...this.COLOR.line);
-    strokeWeight(highlight ? 4 : 2);
-    drawingContext.setLineDash([10, 7]);
-    rect(target.x, target.y, target.w, target.h, 12);
-    drawingContext.setLineDash([]);
-
-    noStroke();
-    textAlign(CENTER, CENTER);
-    fill(...this.COLOR.ink);
-    textStyle(BOLD);
-    this.fitTextSize(target.label, target.w - 20, 18, 12);
-    text(target.label, target.x + target.w / 2, target.y + 28);
-    textStyle(NORMAL);
-    textSize(16);
-    fill(...this.COLOR.subInk);
-    text('넣은 물건 ' + count + '개', target.x + target.w / 2, target.y + target.h / 2 + 16);
-
+    ART.target(target, count, highlight, this.plain(target.label));
     if (debug) this.drawDebugFrame(target, target.type);
-    pop();
   },
 
   // 메모 카드: 이름은 굵게, 출처 메모는 한 줄로 쓴다. 물건을 들고 있는 동안만 보인다.
+  // 오른쪽 위 '임시 문구'는 이름과 메모가 아직 임시라는 표시다.
   drawMemoCard(def) {
     const c = this.MEMO_CARD;
     push();
-    fill(255, 251, 232);
+    fill(...this.COLOR.memo);
     stroke(...this.COLOR.line);
     strokeWeight(2);
     rect(c.x, c.y, c.w, c.h, 10);
-
     noStroke();
+
+    textStyle(NORMAL);
+    textSize(13);
+    const tag = '임시 문구';
+    const tagW = textWidth(tag) + 14;
+    fill(240, 232, 200);
+    rect(c.x + c.w - tagW - 12, c.y + 10, tagW, 22, 4);
+    fill(...this.COLOR.subInk);
+    textAlign(CENTER, CENTER);
+    text(tag, c.x + c.w - 12 - tagW / 2, c.y + 21);
+
     textAlign(LEFT, CENTER);
     fill(...this.COLOR.ink);
     textStyle(BOLD);
-    this.fitTextSize(def.name, c.w - 48, 20, 12);
-    text(def.name, c.x + 24, c.y + 25);
+    const name = this.plain(def.name);
+    this.fitTextSize(name, c.w - 72 - tagW, 20, 12);
+    text(name, c.x + 24, c.y + 25);
     textStyle(NORMAL);
     fill(...this.COLOR.subInk);
-    this.fitTextSize(def.memo, c.w - 48, 17, 11);
-    text(def.memo, c.x + 24, c.y + 54);
+    const memo = this.plain(def.memo);
+    this.fitTextSize(memo, c.w - 48, 17, 11);
+    text(memo, c.x + 24, c.y + 54);
     pop();
   },
 
@@ -289,7 +265,7 @@ const UI = {
     textSize(18);
     const w = textWidth(message) + 44;
     noStroke();
-    fill(30, 30, 30, 228);
+    fill(40, 37, 33, 232);
     rect(this.W / 2 - w / 2, 84, w, 40, 20);
     fill(255);
     textAlign(CENTER, CENTER);

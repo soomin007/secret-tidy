@@ -3,6 +3,14 @@
 // 물건을 들고 있는 동안에는 메모 카드를 띄우고, 사진을 처음 누르면 회상 장면으로 넘어간다.
 
 const SceneZone = {
+  // 받지 않는 대상에 놓았을 때 띄우는 한마디. 물건이 제자리로 돌아가는 것은 화면에 보이므로 까닭만 쓴다.
+  REJECT_TOAST: {
+    hide: '숨길 물건이 아니에요',
+    trash: '쓰레기가 아니에요',
+    laundry: '빨래가 아니에요'
+  },
+  FOLD_HINT: '좌우로 길게 쓸어 보세요',
+
   zoneId: null,
   zone: null,
   handling: false,   // 끌기, 쓸기, 닦기처럼 손을 뗄 때 끝나는 동작을 하는 중인지
@@ -20,9 +28,7 @@ const SceneZone = {
   // 근접 컷의 바탕, 드롭 대상, 물건을 그린다. 회상 장면도 이 함수로 밑그림을 깐다.
   // m이 null이면 마우스 올림 효과 없이 그린다.
   drawScene(m) {
-    noStroke();
-    fill(...UI.COLOR.zoneBg);
-    rect(0, 0, UI.W, UI.H);
+    ART.backdrop(this.zoneId);
 
     const held = ItemManager.held();
     const hoverTarget = held && m ? ItemManager.targetAt(this.zoneId, m) : null;
@@ -45,8 +51,8 @@ const SceneZone = {
     const hoverCover = idle ? ItemManager.coverAt(this.zoneId, m) : null;
     for (const c of covers) if (!c.open) UI.drawCover(c, { hover: c === hoverCover, debug: Game.debugView });
 
-    // 들고 있는 물건은 커서를 따라 맨 위에 그린다.
-    if (held) UI.drawItem(held, ItemManager.heldRect(), { hover: true, debug: Game.debugView });
+    // 들고 있는 물건은 커서를 따라 맨 위에 그린다. 들어 올린 것처럼 그림자를 멀리 둔다.
+    if (held) UI.drawItem(held, ItemManager.heldRect(), { hover: true, lift: 10, debug: Game.debugView });
   },
 
   draw(m) {
@@ -106,11 +112,10 @@ const SceneZone = {
     if (handled) PlayLog.add('release', { zone: this.zoneId });
     if (!outcome) return;
     if (outcome.result === 'rejected') {
-      // 무슨 일이 있었는지 알려 준다. 물건은 이미 제자리로 돌아가 있다.
-      Game.showToast(outcome.target.label + '에는 넣을 수 없어서 제자리로 돌아갔다');
+      Game.showToast(this.REJECT_TOAST[outcome.target.type] || '여기에는 못 넣어요');
     } else if (outcome.result === 'fold' && !outcome.counted) {
       // 쓸기로 세지 않았을 때 다음에 무엇을 하면 되는지 알려 준다.
-      Game.showToast('이불은 좌우로 길게 쓸어야 개진다');
+      Game.showToast(this.FOLD_HINT);
     }
   }
 };

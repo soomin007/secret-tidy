@@ -8,9 +8,9 @@ const SceneResult = {
   LIST_PANEL: { x: 670, y: 215, w: 520 },
 
   REASON_TEXT: {
-    timeout: '시간이 다 됐다',
-    door: '문을 열어 주었다',
-    debug: '디버그 키 E로 끝냈다'
+    timeout: '시간 끝',
+    door: '문 열어 줌',
+    debug: '디버그 키 E'
   },
 
   reason: '',
@@ -28,8 +28,9 @@ const SceneResult = {
   draw(m) {
     const r = this.result;
     noStroke();
-    fill(240, 237, 231);
+    fill(...UI.COLOR.paper);
     rect(0, 0, UI.W, UI.H);
+    this.drawTempTag();
 
     const ending = ENDINGS[r.ending];
     textAlign(CENTER, CENTER);
@@ -40,7 +41,7 @@ const SceneResult = {
     textStyle(NORMAL);
     textSize(21);
     fill(...UI.COLOR.subInk);
-    text(ending.line, UI.W / 2, 122);
+    text(UI.plain(ending.line), UI.W / 2, 122);
 
     if (r.questionItem) this.drawQuestionItem(r.questionItem);
 
@@ -51,16 +52,33 @@ const SceneResult = {
     UI.drawButton(this.RETRY_BUTTON, { hover: this.isClickable(m), textSize: 22 });
   },
 
+  // 엔딩 문구와 물건 이름이 아직 임시라는 표시. 오른쪽 위 구석에 한 번만 둔다.
+  drawTempTag() {
+    push();
+    textStyle(NORMAL);
+    textSize(13);
+    const tag = '임시 문구';
+    const w = textWidth(tag) + 14;
+    noStroke();
+    fill(232, 224, 196);
+    rect(UI.W - 16 - w, 16, w, 22, 4);
+    fill(...UI.COLOR.subInk);
+    textAlign(CENTER, CENTER);
+    text(tag, UI.W - 16 - w / 2, 27);
+    pop();
+  },
+
   // 질문 엔딩: 애인이 집어 든 물건 이름을 보여 준다.
   drawQuestionItem(item) {
     push();
+    const name = UI.plain(item.name);
     const label = '애인이 집어 든 물건';
     textStyle(NORMAL);
     textSize(17);
     const labelW = textWidth(label);
     textStyle(BOLD);
     textSize(21);
-    const nameW = textWidth(item.name);
+    const nameW = textWidth(name);
     const w = labelW + nameW + 64;
     const x = UI.W / 2 - w / 2;
     fill(255);
@@ -76,7 +94,7 @@ const SceneResult = {
     textStyle(BOLD);
     textSize(21);
     fill(...UI.COLOR.warning);
-    text(item.name, x + 24 + labelW + 16, 172);
+    text(name, x + 24 + labelW + 16, 172);
     pop();
   },
 
@@ -201,8 +219,9 @@ const SceneResult = {
       }
       col.items.forEach((item, i) => {
         fill(...UI.COLOR.ink);
-        UI.fitTextSize(item.name, colW, 17, 11);
-        text(item.name, col.x, p.y + 72 + i * 27);
+        const name = UI.plain(item.name);
+        UI.fitTextSize(name, colW, 17, 11);
+        text(name, col.x, p.y + 72 + i * 27);
       });
     }
     pop();
