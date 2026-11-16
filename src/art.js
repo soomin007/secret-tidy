@@ -800,7 +800,7 @@ const ART = {
     }
     this.weight = 2;
 
-    const tags = { desk: [227, 516], bed: [646, 516], closet: [1055, 516], floor: [490, 672] };
+    const tags = { desk: [227, 516], bed: [646, 516], closet: [1055, 516], floor: [490, 677] };
     for (const z of ZONES) {
       const [tx, ty] = tags[z.id];
       const w = A.chip(z.name, tx, ty, 17, z.id === hoverId);
@@ -865,8 +865,8 @@ const ART = {
 
     floor() {
       const A = ART, C = A.C;
-      A.poly(A.rrect(110, 556, 760, 124, 40), C.rug);
-      A.poly(A.rrect(126, 568, 728, 100, 32), null, { line: C.rugEdge, sw: 2 });
+      A.poly(A.rrect(110, 550, 760, 110, 40), C.rug);
+      A.poly(A.rrect(126, 562, 728, 86, 30), null, { line: C.rugEdge, sw: 2 });
       A.poly(A.rect4(176, 572, 104, 34), C.coverLight);
       A.poly(A.rect4(176, 606, 104, 36), C.cover);
       A.poly(A.wavy(404, 600, 120, 40, 11, 5), C.laundry);
