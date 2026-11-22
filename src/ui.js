@@ -1,5 +1,4 @@
-// 여러 장면이 함께 쓰는 화면 도구를 모은다. 색, 버튼, HUD, 메모 카드, 안내 문구, DEBUG 표시가 여기 있다.
-// 물건, 덮개, 드롭 대상의 모양은 src/art.js가 그리고, 여기서는 그 위에 글자와 디버그 표시를 얹는다.
+// 여러 장면이 함께 쓰는 화면 도구를 모은다. 색, 글자 줄 나누기, 버튼, HUD, 대사 창, DEBUG 표시가 여기 있다.
 // 모든 좌표는 1280×720 논리 좌표이고, 창 크기에 맞춘 확대와 축소는 sketch.js가 맡는다.
 
 const UI = {
@@ -7,48 +6,32 @@ const UI = {
   H: 720,
 
   COLOR: {
-    margin: [17, 17, 17],          // 그림 밖 여백
-    ink: [52, 48, 43],             // 기본 글자
-    subInk: [118, 111, 102],       // 보조 글자
+    margin: [17, 17, 17],          // 1280×720 바깥 여백
+    stage: [232, 229, 223],        // 방 전체와 근접 컷 바탕
+    dark: [38, 36, 34],            // 시작, 오프닝, 안내, 엔딩 바탕
+    ink: [40, 37, 33],             // 기본 글자
+    subInk: [112, 106, 98],        // 보조 글자, 지문
     line: [70, 64, 56],            // 테두리
-    paper: [244, 241, 235],        // 결과 화면 바탕
+    paper: [250, 248, 244],        // 대사 창, 패널
     button: [58, 54, 49],
     buttonHover: [96, 89, 80],
     buttonDisabled: [190, 184, 175],
-    warning: [196, 52, 44],        // 30초 이하 타이머
-    introBg: [38, 36, 34],
+    warning: [196, 52, 44],        // WARNING_SEC 이하 타이머
     memo: [255, 251, 232],         // 메모 카드
-    cover: ART.C.cover,            // 닫힌 덮개의 바탕색. 물건 종류 색과 겹치지 않는 회녹색
+    debug: [220, 0, 160],          // 디버그 판정 영역
     debugBadge: [255, 214, 0]
   },
 
-  // 디버그 표시(D)를 켰을 때만 쓰는 종류별 색. 평소에는 선물과 내 물건과 사진이 모두 같은 흰색이다.
-  // 메모를 읽어야만 선물과 내 물건을 구분할 수 있다는 것이 이 게임의 핵심 판단이다.
-  DEBUG_FILL: {
-    ex_gift: [246, 176, 176],
-    own_goods: [170, 222, 182],
-    photo: [247, 219, 133]
-  },
-  // ITEM_LABELS가 'kind'일 때 물건 위에 쓰는 종류 이름. 선물과 내 물건은 똑같이 '소품'이다.
-  KIND_LABEL: {
-    ex_gift: '소품',
-    own_goods: '소품',
-    photo: '사진',
-    trash: '쓰레기',
-    laundry: '빨래',
-    blanket: '이불',
-    stain: '얼룩'
-  },
-
-  // 근접 컷에서 장소 이름 아래에 두는 버튼
-  BACK_BUTTON: { x: 16, y: 72, w: 150, h: 44, label: '방 전체로' },
-  // 오른쪽 위 남은 시간 칸
+  // HUD 자리. 물건은 y 90 아래에만 둔다.
+  PLACE_BOX: { x: 16, y: 16, w: 120, h: 48 },
+  BACK_BUTTON: { x: 148, y: 16, w: 150, h: 48, label: '방 전체로' },
   TIMER_BOX: { x: 1114, y: 16, w: 150, h: 56 },
-  // 물건을 들고 있는 동안 화면 아래 가운데에 뜨는 메모 카드
-  MEMO_CARD: { x: 320, y: 628, w: 640, h: 78 },
+  // 화면 아래 메모 카드 자리(y 570~710)
+  MEMO_CARD: { x: 40, y: 570, w: 1200, h: 140 },
+  // 오프닝, 통화, 엔딩이 함께 쓰는 대사 창
+  DIALOGUE: { x: 60, y: 520, w: 1160, h: 180 },
 
-  // 데이터의 이름과 메모는 아직 임시라서 모두 '[임시]'로 시작한다. 화면에는 그 머리말을 빼고 쓰고,
-  // 임시라는 표시는 메모 카드와 결과 화면 구석에 한 번만 둔다.
+  // 임시 데이터의 이름은 '[임시]'로 시작한다. 화면에는 그 머리말을 빼고 쓴다.
   plain(str) {
     return String(str).replace(/^\[임시\]\s*/, '');
   },
@@ -57,7 +40,50 @@ const UI = {
     return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
   },
 
-  // 글자가 maxW 안에 들어갈 때까지 글자 크기를 줄이고, 실제로 쓴 크기를 돌려준다.
+  // 글자를 maxW 폭 안에 들어가게 여러 줄로 나눈다. 지금 글자 크기와 굵기로 잰다.
+  // 띄어쓰기에서 끊고, 한 낱말이 한 줄보다 길 때만 글자 단위로 끊는다.
+  wrapLines(str, maxW) {
+    const out = [];
+    for (const para of String(str).split('\n')) {
+      let line = '';
+      for (const word of para.split(' ')) {
+        const next = line ? line + ' ' + word : word;
+        if (textWidth(next) <= maxW) {
+          line = next;
+          continue;
+        }
+        if (line) out.push(line);
+        if (textWidth(word) <= maxW) {
+          line = word;
+          continue;
+        }
+        line = '';
+        for (const ch of word) {
+          if (textWidth(line + ch) > maxW && line) {
+            out.push(line);
+            line = ch;
+          } else {
+            line += ch;
+          }
+        }
+      }
+      out.push(line);
+    }
+    return out;
+  },
+
+  // maxLines 줄 안에 들어갈 때까지 글자 크기를 줄여 { size, lines }를 돌려준다. 다 줄여도 넘치면 넘친 채로 돌려준다.
+  fitLines(str, maxW, maxLines, size, minSize) {
+    let lines = [];
+    for (let s = size; s >= minSize; s--) {
+      textSize(s);
+      lines = this.wrapLines(str, maxW);
+      if (lines.length <= maxLines) return { size: s, lines };
+    }
+    return { size: minSize, lines };
+  },
+
+  // 글자가 maxW 안에 한 줄로 들어갈 때까지 크기를 줄이고, 실제로 쓴 크기를 돌려준다.
   fitTextSize(str, maxW, size, minSize) {
     textSize(size);
     while (size > minSize && textWidth(str) > maxW) {
@@ -65,6 +91,12 @@ const UI = {
       textSize(size);
     }
     return size;
+  },
+
+  // 여러 줄을 (x, y)부터 leading 간격으로 쓴다. align은 LEFT나 CENTER다.
+  drawLines(lines, x, y, leading, align) {
+    textAlign(align, TOP);
+    lines.forEach((l, i) => text(l, x, y + i * leading));
   },
 
   // 300 → "5분", 270 → "4분 30초", 45 → "45초"
@@ -76,8 +108,8 @@ const UI = {
     return m + '분 ' + s + '초';
   },
 
-  // 버튼 하나를 그린다. opts.variant가 'light'면 흰 바탕에 짙은 글자다.
-  // opts.disabled는 물건을 들고 있는 동안처럼 버튼이 반응하지 않을 때 쓴다. opts.back이면 글자 앞에 왼쪽 화살촉을 그린다.
+  // 버튼 하나. opts: { hover, disabled, variant: 'light', textSize }
+  // 글자가 길면 두 줄까지 나눠 쓴다(통화 선택지).
   drawButton(btn, opts = {}) {
     const light = opts.variant === 'light';
     push();
@@ -86,65 +118,68 @@ const UI = {
       fill(...this.COLOR.buttonDisabled);
       stroke(...this.COLOR.buttonDisabled);
     } else if (light) {
-      fill(opts.hover ? 232 : 255);
+      fill(opts.hover ? 236 : 255);
       stroke(...this.COLOR.line);
+      strokeWeight(opts.hover ? 3 : 2);
     } else {
       fill(...(opts.hover ? this.COLOR.buttonHover : this.COLOR.button));
       stroke(...this.COLOR.button);
     }
-    rect(btn.x, btn.y, btn.w, btn.h, 8);
+    rect(btn.x, btn.y, btn.w, btn.h, 6);
 
     noStroke();
-    const ink = light && !opts.disabled ? this.COLOR.ink : [255, 255, 255];
-    fill(...ink);
-    textAlign(CENTER, CENTER);
-    textStyle(BOLD);
-    const size = this.fitTextSize(btn.label, btn.w - (opts.back ? 44 : 20), opts.textSize || 20, 12);
-    let cx = btn.x + btn.w / 2;
-    if (opts.back) {
-      const tw = textWidth(btn.label);
-      cx += 9;
-      const ax = cx - tw / 2 - 14;
-      const ay = btn.y + btn.h / 2;
-      stroke(...ink);
-      strokeWeight(2.5);
-      noFill();
-      line(ax + 5, ay - 6, ax - 1, ay);
-      line(ax - 1, ay, ax + 5, ay + 6);
-      noStroke();
-      fill(...ink);
-    }
-    textSize(size);
-    text(btn.label, cx, btn.y + btn.h / 2);
+    fill(...(light && !opts.disabled ? this.COLOR.ink : [255, 255, 255]));
+    textStyle(opts.bold === false ? NORMAL : BOLD);
+    const fit = this.fitLines(btn.label, btn.w - 28, opts.maxLines || 1, opts.textSize || 20, 12);
+    textSize(fit.size);
+    const leading = fit.size * 1.4;
+    const top = btn.y + btn.h / 2 - (fit.lines.length * leading) / 2 + (leading - fit.size) / 2;
+    if (opts.align === 'left') this.drawLines(fit.lines, btn.x + 20, top, leading, LEFT);
+    else this.drawLines(fit.lines, btn.x + btn.w / 2, top, leading, CENTER);
     pop();
   },
 
-  // HUD는 방 전체, 근접 컷, 회상에서 항상 그린다.
-  // 왼쪽 위에 현재 장소 이름, 오른쪽 위에 남은 시간을 두고, 근접 컷에서는 이름 아래에 "방 전체로" 버튼을 둔다.
-  drawHud(placeName, opts = {}) {
+  // 방 전체와 근접 컷 위쪽 HUD. 왼쪽 위에 지금 있는 곳의 이름, 오른쪽 위에 남은 시간을 둔다.
+  // opts: { place, back(근접 컷이면 true), backHover, blocked(겹친 창이나 드래그 때문에 버튼이 반응하지 않음), hiddenCount }
+  drawHud(opts) {
     push();
-    textStyle(BOLD);
-    textSize(22);
-    const nameW = textWidth(placeName) + 36;
+    const pb = this.PLACE_BOX;
     fill(255, 255, 255, 240);
     stroke(...this.COLOR.line);
     strokeWeight(1.5);
-    rect(16, 16, nameW, 44, 8);
+    rect(pb.x, pb.y, pb.w, pb.h, 6);
     noStroke();
     fill(...this.COLOR.ink);
-    textAlign(LEFT, CENTER);
-    text(placeName, 34, 38);
+    textStyle(BOLD);
+    textAlign(CENTER, CENTER);
+    this.fitTextSize(opts.place, pb.w - 16, 22, 14);
+    text(opts.place, pb.x + pb.w / 2, pb.y + pb.h / 2);
 
-    if (opts.backButton) {
-      this.drawButton(this.BACK_BUTTON, { hover: opts.backHover, disabled: opts.backDisabled, textSize: 19, back: true });
+    if (opts.back) {
+      this.drawButton(this.BACK_BUTTON, { hover: opts.backHover && !opts.blocked, textSize: 19 });
     }
 
-    const warn = GameTimer.isWarning();
+    if (opts.hiddenCount !== null && opts.hiddenCount !== undefined) {
+      const label = '숨긴 물건 ' + opts.hiddenCount + '개';
+      textStyle(BOLD);
+      textSize(19);
+      const w = textWidth(label) + 36;
+      fill(255, 255, 255, 230);
+      stroke(...this.COLOR.line);
+      strokeWeight(1.5);
+      rect(this.W / 2 - w / 2, 20, w, 40, 6);
+      noStroke();
+      fill(...this.COLOR.ink);
+      textAlign(CENTER, CENTER);
+      text(label, this.W / 2, 40);
+    }
+
+    const warn = GameTimer.isWarning(CONFIG);
     const box = this.TIMER_BOX;
     fill(255, 255, 255, 240);
     stroke(...(warn ? this.COLOR.warning : this.COLOR.line));
     strokeWeight(warn ? 3 : 1.5);
-    rect(box.x, box.y, box.w, box.h, 8);
+    rect(box.x, box.y, box.w, box.h, 6);
     noStroke();
     fill(...(warn ? this.COLOR.warning : this.COLOR.ink));
     textAlign(CENTER, CENTER);
@@ -154,126 +189,139 @@ const UI = {
     pop();
   },
 
-  // 물건 위에 쓸 글자. mode는 CONFIG.ITEM_LABELS이고, 디버그 표시를 켜면 언제나 이름 전체를 쓴다.
-  itemLabel(state, mode, debug) {
-    const kind = state.def.kind;
-    const folded = kind === 'blanket' && state.status === 'done' ? ' (다 갬)' : '';
-    if (debug || mode === 'name') return this.plain(state.def.name) + folded;
-    if (mode === 'kind') return (this.KIND_LABEL[kind] || '') + folded;
-    return '';
-  },
-
-  // 물건 하나를 r 위치에 그린다. 모양은 src/art.js가 그리고, ITEM_LABELS에 따른 글자를 아래쪽에 얹는다.
-  // opts: { hover, lift, debug }
-  drawItem(state, r, opts = {}) {
-    ART.item(state, r, opts);
-    const label = this.itemLabel(state, CONFIG.ITEM_LABELS, opts.debug);
-    if (label) {
-      push();
-      textStyle(NORMAL);
-      const size = this.fitTextSize(label, r.w - 10, 14, 10);
-      const w = Math.min(textWidth(label), r.w - 10) + 12;
-      const y = r.y + r.h - 12 - (opts.lift || (opts.hover ? 3 : 0));
-      noStroke();
-      fill(255, 255, 255, 215);
-      rect(r.x + r.w / 2 - w / 2, y - 10, w, 20, 4);
-      fill(...this.COLOR.ink);
-      textAlign(CENTER, CENTER);
-      textSize(size);
-      text(label, r.x + r.w / 2, y);
-      pop();
-    }
-    if (opts.debug) {
-      const kind = state.def.kind;
-      let extra = '';
-      if (kind === 'blanket') extra = ' 쓸기 ' + state.foldStrokes + '/' + CONFIG.FOLD_STROKES;
-      if (kind === 'stain') extra = ' 닦기 ' + Math.round(state.wipeDistance) + '/' + CONFIG.WIPE_DISTANCE;
-      this.drawDebugFrame(r, state.def.id + extra);
-    }
-  },
-
-  // 덮개. 닫힌 덮개는 이름에 맞는 모양(서랍, 책 더미, 베개 등)을 같은 덮개 색으로 그리고, 연 덮개는 흐리게 남긴다.
-  // 열 수 있는 것은 모두 같은 색이라서, 하나를 열어 보면 나머지도 열 수 있다는 것을 알게 된다. opts: { hover, debug }
-  drawCover(cover, opts = {}) {
-    ART.cover(cover, opts);
-    const d = cover.def;
-    if (opts.debug) this.drawDebugFrame(d, d.id + (d.hides.length ? ' ' + d.hides.join(', ') : ' (빈 덮개)'));
-  },
-
-  // 디버그 표시: 판정 영역 테두리와 id
-  drawDebugFrame(r, label) {
+  // 대사 창. line은 { speaker, text }이고, speaker가 빈 문자열이면 지문이라 이름 없이 회색으로 쓴다.
+  // line.strong은 대사가 아닌 게임 안내 줄(엔딩의 '놓친 물건')이라 짙은 굵은 글씨로 쓴다.
+  // opts.more가 true면 오른쪽 아래에 '누르면 다음 줄'이라는 뜻의 작은 세모를 그린다.
+  drawDialogue(line, opts = {}) {
+    const d = this.DIALOGUE;
     push();
-    noFill();
-    stroke(220, 0, 160);
-    strokeWeight(1);
-    rect(r.x, r.y, r.w, r.h);
+    fill(...this.COLOR.paper);
+    stroke(...this.COLOR.line);
+    strokeWeight(2);
+    rect(d.x, d.y, d.w, d.h, 6);
+
+    const narration = !line.speaker;
+    if (!narration) {
+      textStyle(BOLD);
+      textSize(20);
+      const w = textWidth(line.speaker) + 36;
+      fill(...this.COLOR.button);
+      noStroke();
+      rect(d.x + 24, d.y - 22, w, 40, 6);
+      fill(255);
+      textAlign(CENTER, CENTER);
+      text(line.speaker, d.x + 24 + w / 2, d.y - 2);
+    }
+
     noStroke();
-    fill(220, 0, 160);
-    textStyle(NORMAL);
-    textSize(11);
-    textAlign(LEFT, BOTTOM);
-    text(label, r.x, r.y - 2);
+    textStyle(line.strong ? BOLD : NORMAL);
+    fill(...(narration && !line.strong ? this.COLOR.subInk : this.COLOR.ink));
+    const fit = this.fitLines(line.text, d.w - 72, 4, 23, 16);
+    textSize(fit.size);
+    this.drawLines(fit.lines, d.x + 36, d.y + 34, fit.size * 1.55, LEFT);
+
+    if (opts.more) {
+      fill(...this.COLOR.subInk);
+      const ax = d.x + d.w - 34;
+      const ay = d.y + d.h - 26;
+      triangle(ax - 9, ay - 5, ax + 9, ay - 5, ax, ay + 6);
+    }
     pop();
   },
 
-  // 드롭 대상(숨김 상자, 휴지통, 빨래 바구니). 이름표에 이름과 넣은 개수를 쓴다.
-  // 물건을 들고 그 위에 올라가 있으면 highlight가 true다.
-  drawTarget(target, count, highlight, debug) {
-    ART.target(target, count, highlight, this.plain(target.label));
-    if (debug) this.drawDebugFrame(target, target.type);
+  // 물건 상자 안에 쓸 이름. 상자 폭 안에서 두 줄 이내가 되게 글자 크기를 16부터 12까지 줄인다.
+  // tools/e2e.js가 모든 물건에 대해 이 결과를 그대로 받아 두 줄 이내인지 확인한다.
+  fitBoxLabel(label, r) {
+    return this.fitLines(label, r.w - 16, 2, 16, 12);
   },
 
-  // 메모 카드: 이름은 굵게, 출처 메모는 한 줄로 쓴다. 물건을 들고 있는 동안만 보인다.
-  // 오른쪽 위 '임시 문구'는 이름과 메모가 아직 임시라는 표시다.
-  drawMemoCard(def) {
+  // 상자 가운데에 이름을 쓴다. 지금 채우기 색과 굵기를 그대로 쓴다.
+  drawBoxLabel(label, r) {
+    const fit = this.fitBoxLabel(label, r);
+    textSize(fit.size);
+    const leading = fit.size * 1.3;
+    const top = r.y + r.h / 2 - (fit.lines.length * leading) / 2 + (leading - fit.size) / 2;
+    this.drawLines(fit.lines, r.x + r.w / 2, top, leading, CENTER);
+  },
+
+  MEMO_DETAIL_BUTTON: { x: 1070, y: 582, w: 156, h: 42, label: '자세히 보기' },
+
+  // 메모 카드. 이름을 굵게 쓰고 그 아래에 memo1을, [자세히 보기]를 누른 뒤에는 memo2를 이어서 쓴다.
+  // 두 메모가 카드 높이 안에 들어갈 때까지 글자 크기를 줄인다.
+  drawMemoCard(item, detailed, hoverDetail) {
     const c = this.MEMO_CARD;
     push();
     fill(...this.COLOR.memo);
     stroke(...this.COLOR.line);
     strokeWeight(2);
-    rect(c.x, c.y, c.w, c.h, 10);
+    rect(c.x, c.y, c.w, c.h, 6);
+
     noStroke();
-
-    textStyle(NORMAL);
-    textSize(13);
-    const tag = '임시 문구';
-    const tagW = textWidth(tag) + 14;
-    fill(240, 232, 200);
-    rect(c.x + c.w - tagW - 12, c.y + 10, tagW, 22, 4);
-    fill(...this.COLOR.subInk);
-    textAlign(CENTER, CENTER);
-    text(tag, c.x + c.w - 12 - tagW / 2, c.y + 21);
-
-    textAlign(LEFT, CENTER);
     fill(...this.COLOR.ink);
     textStyle(BOLD);
-    const name = this.plain(def.name);
-    this.fitTextSize(name, c.w - 72 - tagW, 20, 12);
-    text(name, c.x + 24, c.y + 25);
+    textAlign(LEFT, TOP);
+    this.fitTextSize(item.name, c.w - 260, 22, 14);
+    text(item.name, c.x + 24, c.y + 16);
+
     textStyle(NORMAL);
-    fill(...this.COLOR.subInk);
-    const memo = this.plain(def.memo);
-    this.fitTextSize(memo, c.w - 48, 17, 11);
-    text(memo, c.x + 24, c.y + 54);
+    const texts = detailed ? [item.memo1, item.memo2] : [item.memo1];
+    const maxW = c.w - 48;
+    const room = c.h - 60;
+    let size = 18;
+    let blocks = [];
+    for (; size >= 12; size--) {
+      textSize(size);
+      blocks = texts.map(t => this.wrapLines(t, maxW));
+      const lines = blocks.reduce((n, b) => n + b.length, 0);
+      if (lines * size * 1.4 + (blocks.length - 1) * 4 <= room) break;
+    }
+    textSize(size);
+    let y = c.y + 52;
+    blocks.forEach((b, i) => {
+      fill(...(i === 0 ? this.COLOR.ink : this.COLOR.subInk));
+      this.drawLines(b, c.x + 24, y, size * 1.4, LEFT);
+      y += b.length * size * 1.4 + 4;
+    });
+
+    if (!detailed) this.drawButton(this.MEMO_DETAIL_BUTTON, { hover: hoverDetail, variant: 'light', textSize: 18 });
     pop();
   },
 
-  // 놓기가 거절됐을 때처럼 잠깐 띄우는 안내 문구
-  drawToast(message) {
+  // 고양이: '고양이'라고 적힌 작은 원
+  drawCat(x, y, r, hover) {
     push();
-    textStyle(NORMAL);
-    textSize(18);
-    const w = textWidth(message) + 44;
+    fill(255, 253, 248);
+    stroke(...this.COLOR.line);
+    strokeWeight(hover ? 4 : 2);
+    circle(x, y, r * 2);
     noStroke();
-    fill(40, 37, 33, 232);
-    rect(this.W / 2 - w / 2, 84, w, 40, 20);
-    fill(255);
+    fill(...this.COLOR.ink);
     textAlign(CENTER, CENTER);
-    text(message, this.W / 2, 104);
+    textStyle(BOLD);
+    this.fitTextSize('고양이', r * 2 - 8, 14, 10);
+    text('고양이', x, y);
     pop();
   },
 
-  // 디버그 표시(D)를 켜면 타이머 아래에 실시간 점수와 구역별 남은 개수를 띄운다.
+  // 디버그 표시: 판정 영역 테두리와 이름표
+  drawDebugFrame(r, label) {
+    push();
+    noFill();
+    stroke(...this.COLOR.debug);
+    strokeWeight(1);
+    rect(r.x, r.y, r.w, r.h);
+    if (label) {
+      noStroke();
+      fill(...this.COLOR.debug);
+      textStyle(NORMAL);
+      textSize(11);
+      textAlign(LEFT, BOTTOM);
+      text(label, r.x, r.y - 1);
+    }
+    pop();
+  },
+
+  // 디버그 표시(D)를 켜면 타이머 아래에 실시간 점수와 지금 끝나면 나올 엔딩을 띄운다.
   drawDebugInfo(lines) {
     push();
     textStyle(NORMAL);
@@ -281,7 +329,7 @@ const UI = {
     const w = Math.max(...lines.map(l => textWidth(l))) + 20;
     const x = this.TIMER_BOX.x + this.TIMER_BOX.w - w;
     noStroke();
-    fill(0, 0, 0, 170);
+    fill(0, 0, 0, 180);
     rect(x, 80, w, lines.length * 19 + 10, 4);
     fill(255, 236, 120);
     textAlign(LEFT, CENTER);
@@ -289,19 +337,20 @@ const UI = {
     pop();
   },
 
-  // 디버그 표시나 일시정지가 켜져 있으면 왼쪽 아래 구석에 띄워, 테스트 화면을 실제 플레이로 착각하지 않게 한다.
+  // 디버그 표시나 일시정지가 켜져 있으면 HUD의 [방 전체로] 오른쪽에 띄워, 테스트 화면을 실제 플레이로 착각하지 않게 한다.
+  // 메모 카드, 고양이, [준비 완료]와 겹치지 않는 자리다.
   drawDebugBadge(paused) {
     const label = paused ? 'DEBUG 일시정지' : 'DEBUG';
     push();
     textStyle(BOLD);
-    textSize(16);
+    textSize(15);
     const w = textWidth(label) + 20;
     noStroke();
     fill(...this.COLOR.debugBadge);
-    rect(10, this.H - 38, w, 28, 4);
+    rect(312, 26, w, 28, 4);
     fill(0);
     textAlign(LEFT, CENTER);
-    text(label, 20, this.H - 24);
+    text(label, 322, 40);
     pop();
   }
 };

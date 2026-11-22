@@ -1,11 +1,12 @@
-// 전역 타이머다. 인트로를 떠나는 순간 시작해서 결과 화면에 닿을 때 멈춘다.
+// 한 판의 타이머다. 게임 방법 안내를 닫는 순간 시작해서 엔딩 판정에 닿을 때 멈춘다.
 // 매 프레임 실제로 흐른 시간(초)을 받아 남은 시간에서 빼며, 프레임 수로 세지 않는다.
+// 장면 전환, 회상, 통화, 확인 창 중에도 멈추지 않는다. 멈추는 것은 디버그 키 P뿐이다.
 // p5 함수를 쓰지 않으므로 브라우저 밖에서도 그대로 시험할 수 있다.
 
 const GameTimer = {
   remaining: 0,     // 남은 시간(초, 소수까지)
-  running: false,   // 인트로를 떠난 뒤부터 결과에 닿기 전까지 true
-  paused: false,    // 개발용 일시정지. 디버그 키 P로만 켠다
+  running: false,   // 안내를 닫은 뒤부터 엔딩 판정 전까지 true
+  paused: false,    // 디버그 키 P로만 켠다
   elapsed: 0,       // 타이머가 실제로 흐른 시간(초). 디버그 키 [ ] 로 남은 시간을 바꿔도 이 값은 그대로다
 
   reset(limitSec) {
@@ -48,8 +49,8 @@ const GameTimer = {
     return Math.ceil(this.remaining);
   },
 
-  isWarning() {
-    return this.wholeSeconds() <= CONFIG.WARNING_SEC;
+  isWarning(cfg) {
+    return this.wholeSeconds() <= cfg.WARNING_SEC;
   },
 
   // 초를 mm:ss 글자로 바꾼다. 예: 125 → "02:05"

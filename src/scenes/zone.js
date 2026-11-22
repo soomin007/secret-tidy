@@ -1,121 +1,266 @@
-// 근접 컷 장면이다. 장면 하나를 zoneId만 바꿔 옷장, 책상, 침대, 바닥 네 구역에 다시 쓴다.
-// 그 구역의 드롭 대상과 덮개와 물건을 그리고, 누르기와 끌기와 놓기를 ItemManager로 넘긴다.
-// 물건을 들고 있는 동안에는 메모 카드를 띄우고, 사진을 처음 누르면 회상 장면으로 넘어간다.
+// 근접 컷이다. 장면 하나를 zoneId만 바꿔 옷장, 책상, 침대, 바닥 네 구역에 다시 쓴다.
+// 왼쪽 위에 구역 이름과 [방 전체로] 버튼이 있고, 판정 물건, 사진, 청소 물건, 놓는 곳을 data/layout.js의 자리에 그린다.
+// 판정 물건을 클릭하면 화면 아래에 메모 카드가 열린다. 드래그한 물건은 놓을 곳이 없으면 제자리로 돌아간다.
 
 const SceneZone = {
-  // 받지 않는 대상에 놓았을 때 띄우는 한마디. 물건이 제자리로 돌아가는 것은 화면에 보이므로 까닭만 쓴다.
-  REJECT_TOAST: {
-    hide: '숨길 물건이 아니에요',
-    trash: '쓰레기가 아니에요',
-    laundry: '빨래가 아니에요'
+  // 판정 물건(ex, current, mine)은 모두 같은 색과 모양이다. 메모를 읽어야만 구분할 수 있다는 것이 이 게임의 핵심 판단이다.
+  // 디버그 표시(D)를 켰을 때만 분류별 색을 쓴다.
+  FILL: {
+    item: [252, 250, 246],
+    photo: [246, 243, 236],
+    trash: [229, 215, 186],
+    laundry: [204, 217, 232],
+    blanket: [214, 224, 204],
+    stain: [128, 98, 62]
   },
-  FOLD_HINT: '좌우로 길게 쓸어 보세요',
+  DEBUG_FILL: {
+    ex: [246, 186, 180],
+    current: [184, 206, 242],
+    mine: [188, 226, 188]
+  },
+
+  CAT_MOVE_SEC: 1.5,   // 고양이가 다음 물건 옆으로 옮겨 가는 간격(초)
+  CAT_R: 24,
 
   zoneId: null,
-  zone: null,
-  handling: false,   // 끌기, 쓸기, 닦기처럼 손을 뗄 때 끝나는 동작을 하는 중인지
+  memo: null,     // 열린 메모 카드 { id, detailed }
+  drag: null,     // 끌고 있는 물건 { obj, offset, pos }
+  gesture: null,  // 이불이나 얼룩 위에서 누른 채 움직이는 중 { obj, start }
 
   enter(params) {
     this.zoneId = params.zoneId;
-    this.zone = ZONES.find(z => z.id === params.zoneId);
-    this.handling = false;
-    // 회상에서 돌아온 것은 구역에 다시 들어온 것으로 세지 않는다.
-    PlayLog.add(params.resume ? 'resume' : 'enter', { zone: this.zoneId });
+    this.memo = null;
+    this.drag = null;
+    this.gesture = null;
   },
 
-  update() {},
+  // dt는 게임 시간이다. 메모 카드가 열려 있던 시간을 테스트용 기록에 더한다.
+  update(dt) {
+    if (this.memo) GameState.stats.memoOpenSec += dt;
+  },
 
-  // 근접 컷의 바탕, 드롭 대상, 물건을 그린다. 회상 장면도 이 함수로 밑그림을 깐다.
-  // m이 null이면 마우스 올림 효과 없이 그린다.
-  drawScene(m) {
-    ART.backdrop(this.zoneId);
+  hud() {
+    return {
+      place: ZONE_NAMES[this.zoneId],
+      back: true,
+      hiddenCount: CONFIG.SHOW_HIDDEN_COUNT ? GameState.hiddenCount() : null
+    };
+  },
 
-    const held = ItemManager.held();
-    const hoverTarget = held && m ? ItemManager.targetAt(this.zoneId, m) : null;
-    for (const target of this.zone.targets) {
-      UI.drawTarget(target, ItemManager.targetCount(this.zoneId, target.type), target === hoverTarget, Game.debugView);
-    }
+  // 이 구역에 배치된 고양이의 자리. 아직 숨기지 않은 mine 물건의 오른쪽 위 모서리를 CAT_MOVE_SEC마다 차례로 옮겨 다니고,
+  // 그런 물건이 없으면 LAYOUT.catRest에 앉는다. 고양이가 배치되지 않은 구역이면 null이다.
+  // 타이머가 흐른 시간으로 자리를 정하므로, 일시정지(P) 중에는 고양이도 멈춘다.
+  catPosition() {
+    if (GameState.cat.zone !== this.zoneId) return null;
+    const targets = GameState.catTargets(this.zoneId);
+    if (!targets.length) return Object.assign({ itemId: null }, LAYOUT.catRest[this.zoneId]);
+    const it = targets[Math.floor(GameTimer.elapsed / this.CAT_MOVE_SEC) % targets.length];
+    const r = Objects.rect(Objects.get(it.id));
+    return { x: r.x + r.w, y: r.y, itemId: it.id };
+  },
 
-    // 열어 본 덮개는 물건 밑에 흐린 테두리로만 남긴다.
-    const covers = ItemManager.coversIn(this.zoneId);
-    for (const c of covers) if (c.open) UI.drawCover(c, { debug: Game.debugView });
-
-    const idle = m && !ItemManager.isBusy();
-    const hoverItem = idle ? ItemManager.itemAt(this.zoneId, m) : null;
-    for (const s of ItemManager.statesIn(this.zoneId)) {
-      if (!ItemManager.isVisible(s) || s === held) continue;
-      UI.drawItem(s, ItemManager.currentRect(s), { hover: s === hoverItem, debug: Game.debugView });
-    }
-
-    // 닫힌 덮개는 물건 위에 그린다. 그 밑의 물건은 열기 전까지 그리지 않는다.
-    const hoverCover = idle ? ItemManager.coverAt(this.zoneId, m) : null;
-    for (const c of covers) if (!c.open) UI.drawCover(c, { hover: c === hoverCover, debug: Game.debugView });
-
-    // 들고 있는 물건은 커서를 따라 맨 위에 그린다. 들어 올린 것처럼 그림자를 멀리 둔다.
-    if (held) UI.drawItem(held, ItemManager.heldRect(), { hover: true, lift: 10, debug: Game.debugView });
+  // 물건 상자에 쓰는 이름
+  label(obj) {
+    if (obj.type === 'photo') return obj.def.title;
+    return UI.plain(obj.def.name);
   },
 
   draw(m) {
-    this.drawScene(m);
-    const busy = ItemManager.isBusy();
-    UI.drawHud(this.zone.name, {
-      backButton: true,
-      backHover: !busy && UI.inRect(m, UI.BACK_BUTTON),
-      backDisabled: busy
-    });
-    if (Game.debugView) UI.drawDebugFrame(UI.BACK_BUTTON, 'back');
-    const held = ItemManager.held();
-    if (held) UI.drawMemoCard(held.def);
+    background(...UI.COLOR.stage);
+    const free = Game.inputFree();
+    const held = this.drag ? this.drag.obj : null;
+    let hover = null;
+    if (free) {
+      hover = Objects.at(this.zoneId, m, ['item', 'photo', 'trash', 'laundry', 'blanket', 'stain']);
+      if (!hover && this.unhideSpotAt(m)) hover = this.unhideSpotAt(m);
+    } else if (held && !Game.overlay) {
+      // 끌고 있는 물건을 받는 놓는 곳에 올라가면 테두리를 굵게 한다.
+      const spot = Objects.at(this.zoneId, m, ['spot']);
+      if (spot && Objects.accepts(spot, held)) hover = spot;
+    }
+
+    for (const obj of Objects.inZone(this.zoneId)) {
+      if (!Objects.isVisible(obj) || obj === held) continue;
+      this.drawObject(obj, Objects.rect(obj), { hover: obj === hover });
+    }
+    const cat = this.catPosition();
+    if (cat) UI.drawCat(cat.x, cat.y, this.CAT_R, false);
+    // 끌고 있는 물건은 커서를 따라 맨 위에 그린다.
+    if (held) {
+      const r = Objects.rect(held);
+      this.drawObject(held, { x: this.drag.pos.x, y: this.drag.pos.y, w: r.w, h: r.h }, { hover: true });
+    }
+
+    if (this.memo) {
+      const item = Objects.get(this.memo.id).def;
+      UI.drawMemoCard(item, this.memo.detailed, free && UI.inRect(m, UI.MEMO_DETAIL_BUTTON));
+    }
+  },
+
+  // 물건 하나를 r 자리에 그린다. opts: { hover }
+  drawObject(obj, r, opts = {}) {
+    const debug = Game.debugView;
+    const weight = opts.hover ? 4 : 2;
+    push();
+    stroke(...UI.COLOR.line);
+    strokeWeight(weight);
+    const def = obj.def;
+    if (obj.type === 'spot') {
+      this.drawSpot(obj, r, opts);
+    } else if (obj.type === 'stain') {
+      // 반투명 원. 닦을수록 옅어진다.
+      const progress = Gestures.wipeProgress(GameState.cleaning[obj.id].wiped, CONFIG);
+      const alpha = 160 - 130 * progress;
+      fill(...this.FILL.stain, alpha);
+      noStroke();
+      if (opts.hover) {
+        stroke(...UI.COLOR.line);
+        strokeWeight(3);
+      }
+      ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h);
+      noStroke();
+      fill(255, 255, 255, 120 + alpha);
+      textStyle(BOLD);
+      UI.drawBoxLabel(this.label(obj), r);
+    } else {
+      let c = this.FILL[obj.type];
+      if (debug && obj.type === 'item') c = this.DEBUG_FILL[def.category];
+      if (debug && obj.type === 'photo') c = this.DEBUG_FILL[def.kind];
+      fill(...c);
+      rect(r.x, r.y, r.w, r.h, obj.type === 'item' ? 10 : 4);
+      if (obj.type === 'photo') {
+        // 사진은 이중 테두리 액자로 그린다.
+        noFill();
+        strokeWeight(1.5);
+        rect(r.x + 7, r.y + 7, r.w - 14, r.h - 14);
+      }
+      noStroke();
+      fill(...UI.COLOR.ink);
+      textStyle(obj.type === 'item' ? BOLD : NORMAL);
+      const inner = obj.type === 'photo' ? { x: r.x + 8, y: r.y + 8, w: r.w - 16, h: r.h - 16 } : r;
+      UI.drawBoxLabel(this.label(obj), inner);
+    }
+    pop();
+    if (debug) UI.drawDebugFrame(r, obj.id + (obj.type === 'item' ? ' ' + def.category : '') + (obj.type === 'photo' ? ' ' + def.kind : ''));
+  },
+
+  // 놓는 곳: 점선 테두리 상자에 이름과 넣은 개수를 쓴다.
+  drawSpot(obj, r, opts) {
+    const count = obj.def.type === 'hide' ? GameState.hiddenInZone(this.zoneId).length : GameState.cleanedCount(this.zoneId, obj.def.type);
+    fill(255, 255, 255, 70);
+    strokeWeight(opts.hover ? 4 : 2);
+    drawingContext.setLineDash([8, 6]);
+    rect(r.x, r.y, r.w, r.h, 4);
+    drawingContext.setLineDash([]);
+    noStroke();
+    fill(...UI.COLOR.ink);
+    textAlign(CENTER, CENTER);
+    textStyle(BOLD);
+    textSize(18);
+    text(obj.def.name, r.x + r.w / 2, r.y + r.h / 2 - 13);
+    textStyle(NORMAL);
+    textSize(16);
+    fill(...UI.COLOR.subInk);
+    text(count + '개', r.x + r.w / 2, r.y + r.h / 2 + 15);
+  },
+
+  // ALLOW_UNHIDE가 true일 때 누르면 숨긴 물건 목록이 뜨는 숨김 장소
+  unhideSpotAt(p) {
+    if (!CONFIG.ALLOW_UNHIDE) return null;
+    const spot = Objects.at(this.zoneId, p, ['spot']);
+    return spot && spot.def.type === 'hide' ? spot : null;
   },
 
   isClickable(m) {
-    if (ItemManager.isBusy()) return false;
-    return UI.inRect(m, UI.BACK_BUTTON) || ItemManager.coverAt(this.zoneId, m) !== null ||
-      ItemManager.itemAt(this.zoneId, m) !== null;
+    if (UI.inRect(m, UI.BACK_BUTTON)) return true;
+    if (this.memo && !this.memo.detailed && UI.inRect(m, UI.MEMO_DETAIL_BUTTON)) return true;
+    return Objects.thingAt(this.zoneId, m) !== null || this.unhideSpotAt(m) !== null;
   },
 
-  isDragging() {
-    return ItemManager.held() !== null;
+  isHolding() {
+    return this.drag !== null;
   },
 
-  pressed(m) {
-    if (UI.inRect(m, UI.BACK_BUTTON)) {
-      if (!ItemManager.isBusy()) Game.goTo('room');
+  openMemo(id) {
+    if (this.memo && this.memo.id === id) return;
+    this.memo = { id, detailed: false };
+    GameState.stats.memoOpens += 1;
+  },
+
+  closeMemo() {
+    this.memo = null;
+  },
+
+  click(p) {
+    if (UI.inRect(p, UI.BACK_BUTTON)) {
+      Game.goTo('room');
       return;
     }
-    const started = ItemManager.pressAt(this.zoneId, m);
-    if (!started) {
-      PlayLog.add('miss', { zone: this.zoneId });
+    if (this.memo && UI.inRect(p, UI.MEMO_CARD)) {
+      if (!this.memo.detailed && UI.inRect(p, UI.MEMO_DETAIL_BUTTON)) {
+        this.memo.detailed = true;
+        GameState.stats.detailClicks += 1;
+      }
       return;
     }
-    if (started.action === 'cover') {
-      PlayLog.add('cover', { zone: this.zoneId, cover: started.cover.def.id, empty: started.cover.def.hides.length === 0 });
+    const obj = Objects.thingAt(this.zoneId, p);
+    if (obj && obj.type === 'item') {
+      this.openMemo(obj.id);
       return;
     }
-    PlayLog.touch(started.item);
-    // 손을 뗀 때를 다음 물건 찾기의 시작으로 본다. 회상은 돌아온 때가 시작이다.
-    this.handling = started.action !== 'flashback';
-    if (started.action === 'flashback') {
-      // 회상은 이 근접 컷 위에 겹쳐 재생되고, 끝나면 같은 근접 컷으로 돌아온다.
-      Game.goTo('flashback', { zoneId: this.zoneId, itemId: started.item.def.id });
+    // 빈 곳이나 메모가 없는 물건을 누르면 카드가 닫힌다.
+    this.closeMemo();
+    if (obj && obj.type === 'photo') {
+      // 처음 보는 사진은 회상, 본 사진은 PHOTO_REVIEW_COSTS_TIME에 따라 회상을 다시 하거나 같은 내용만 띄운다.
+      const replay = !GameState.photos[obj.id].seen || CONFIG.PHOTO_REVIEW_COSTS_TIME;
+      Game.openOverlay(replay ? 'flashback' : 'photoView', { photoId: obj.id });
+      return;
+    }
+    const spot = obj ? null : this.unhideSpotAt(p);
+    if (spot) Game.openOverlay('hiddenList', { zoneId: this.zoneId, spotName: spot.def.name });
+  },
+
+  // 물건 위에서 드래그를 시작하면 집어 들고, 이불이나 얼룩 위에서 시작하면 쓸기나 닦기가 된다.
+  dragStart(from, p) {
+    const obj = Objects.thingAt(this.zoneId, from);
+    if (obj && Objects.canDrag(obj)) {
+      this.closeMemo();
+      const r = Objects.rect(obj);
+      this.drag = { obj, offset: { x: from.x - r.x, y: from.y - r.y }, pos: { x: r.x, y: r.y } };
+      this.dragMove(p, from);
+      return;
+    }
+    if (obj) return;
+    const g = Objects.at(this.zoneId, from, ['blanket', 'stain']);
+    if (!g) return;
+    this.closeMemo();
+    this.gesture = { obj: g, start: { x: from.x, y: from.y } };
+    this.dragMove(p, from);
+  },
+
+  dragMove(p, prev) {
+    if (this.drag) {
+      this.drag.pos = { x: p.x - this.drag.offset.x, y: p.y - this.drag.offset.y };
+    } else if (this.gesture && this.gesture.obj.type === 'stain') {
+      // 기준 거리에 닿으면 손을 떼기 전이라도 얼룩이 바로 사라진다.
+      if (Objects.wipeStain(this.gesture.obj, prev, p)) this.gesture = null;
     }
   },
 
-  dragged(m) {
-    ItemManager.moveTo(m);
+  // 끌던 물건은 받는 곳에 놓였을 때만 사라지고, 아니면 제자리로 돌아간다. 이불은 손을 뗄 때 쓸기 한 번을 판정한다.
+  dragEnd(p) {
+    if (this.drag) {
+      Objects.drop(this.zoneId, this.drag.obj, p);
+      this.drag = null;
+    } else if (this.gesture) {
+      if (this.gesture.obj.type === 'blanket') Objects.strokeBlanket(this.gesture.obj, this.gesture.start, p);
+      this.gesture = null;
+    }
   },
 
-  released(m) {
-    const handled = this.handling;
-    this.handling = false;
-    const outcome = ItemManager.releaseAt(this.zoneId, m);
-    if (handled) PlayLog.add('release', { zone: this.zoneId });
-    if (!outcome) return;
-    if (outcome.result === 'rejected') {
-      Game.showToast(this.REJECT_TOAST[outcome.target.type] || '여기에는 못 넣어요');
-    } else if (outcome.result === 'fold' && !outcome.counted) {
-      // 쓸기로 세지 않았을 때 다음에 무엇을 하면 되는지 알려 준다.
-      Game.showToast(this.FOLD_HINT);
-    }
+  // 시간이 다 되거나 전화가 와서 끊긴 드래그. 물건은 제자리로 돌아가고, 쓰던 이불은 세지 않는다.
+  dragCancel() {
+    this.drag = null;
+    this.gesture = null;
   }
 };
