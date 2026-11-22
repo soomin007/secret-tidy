@@ -36,6 +36,23 @@ const UI = {
     return String(str).replace(/^\[임시\]\s*/, '');
   },
 
+  // 기획서 문구의 줄표(U+2014)는 화면에 내지 않는다. 띄어 쓴 줄표(장면 이름, 안내 제목)는 가운데 점으로,
+  // 말끝이나 소리 끝에 붙은 줄표는 말줄임표로 바꾼다. data/content.js 파일은 받은 그대로 둔다.
+  tidyText(str) {
+    return str.replace(/ \u2014 /g, ' · ').replace(/\u2014/g, '…');
+  },
+
+  // 기획서 데이터의 모든 문자열에 tidyText를 한 번 적용한다. setup()이 부른다.
+  tidyContent() {
+    const walk = obj => {
+      for (const k of Object.keys(obj)) {
+        if (typeof obj[k] === 'string') obj[k] = this.tidyText(obj[k]);
+        else if (obj[k] && typeof obj[k] === 'object') walk(obj[k]);
+      }
+    };
+    for (const data of [STORY, GUIDE, ITEMS, PHOTOS, CALLS, ENDINGS]) walk(data);
+  },
+
   inRect(p, r) {
     return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
   },
@@ -125,7 +142,7 @@ const UI = {
       fill(...(opts.hover ? this.COLOR.buttonHover : this.COLOR.button));
       stroke(...this.COLOR.button);
     }
-    rect(btn.x, btn.y, btn.w, btn.h, 6);
+    rect(btn.x, btn.y, btn.w, btn.h, 4);
 
     noStroke();
     fill(...(light && !opts.disabled ? this.COLOR.ink : [255, 255, 255]));
@@ -147,7 +164,7 @@ const UI = {
     fill(255, 255, 255, 240);
     stroke(...this.COLOR.line);
     strokeWeight(1.5);
-    rect(pb.x, pb.y, pb.w, pb.h, 6);
+    rect(pb.x, pb.y, pb.w, pb.h);
     noStroke();
     fill(...this.COLOR.ink);
     textStyle(BOLD);
@@ -167,7 +184,7 @@ const UI = {
       fill(255, 255, 255, 230);
       stroke(...this.COLOR.line);
       strokeWeight(1.5);
-      rect(this.W / 2 - w / 2, 20, w, 40, 6);
+      rect(this.W / 2 - w / 2, 20, w, 40);
       noStroke();
       fill(...this.COLOR.ink);
       textAlign(CENTER, CENTER);
@@ -179,7 +196,7 @@ const UI = {
     fill(255, 255, 255, 240);
     stroke(...(warn ? this.COLOR.warning : this.COLOR.line));
     strokeWeight(warn ? 3 : 1.5);
-    rect(box.x, box.y, box.w, box.h, 6);
+    rect(box.x, box.y, box.w, box.h);
     noStroke();
     fill(...(warn ? this.COLOR.warning : this.COLOR.ink));
     textAlign(CENTER, CENTER);
@@ -198,7 +215,7 @@ const UI = {
     fill(...this.COLOR.paper);
     stroke(...this.COLOR.line);
     strokeWeight(2);
-    rect(d.x, d.y, d.w, d.h, 6);
+    rect(d.x, d.y, d.w, d.h);
 
     const narration = !line.speaker;
     if (!narration) {
@@ -207,7 +224,7 @@ const UI = {
       const w = textWidth(line.speaker) + 36;
       fill(...this.COLOR.button);
       noStroke();
-      rect(d.x + 24, d.y - 22, w, 40, 6);
+      rect(d.x + 24, d.y - 22, w, 40);
       fill(255);
       textAlign(CENTER, CENTER);
       text(line.speaker, d.x + 24 + w / 2, d.y - 2);
@@ -229,17 +246,26 @@ const UI = {
     pop();
   },
 
-  // 물건 상자 안에 쓸 이름. 상자 폭 안에서 두 줄 이내가 되게 글자 크기를 16부터 12까지 줄인다.
-  // tools/e2e.js가 모든 물건에 대해 이 결과를 그대로 받아 두 줄 이내인지 확인한다.
+  LABEL_LEADING: 1.2,   // 이름표 글자의 줄 간격(글자 크기 대비)
+
+  // 물건 이름표에 쓸 이름. 이름표 폭(좌우 8px씩 띄움)과 높이(위아래 2px씩 띄움) 안에 두 줄 이내로 들어가게
+  // 글자 크기를 16부터 14까지 줄인다. 다 줄여도 넘치면 넘친 채로 돌려준다.
+  // tools/e2e.js가 모든 물건에 대해 이 결과를 그대로 받아 14px 이상, 두 줄 이내, 이름표 안인지 확인한다.
   fitBoxLabel(label, r) {
-    return this.fitLines(label, r.w - 16, 2, 16, 12);
+    let lines = [];
+    for (let s = 16; s >= 14; s--) {
+      textSize(s);
+      lines = this.wrapLines(label, r.w - 16);
+      if (lines.length <= 2 && lines.length * s * this.LABEL_LEADING <= r.h - 4) return { size: s, lines };
+    }
+    return { size: 14, lines };
   },
 
-  // 상자 가운데에 이름을 쓴다. 지금 채우기 색과 굵기를 그대로 쓴다.
+  // 이름표 가운데에 이름을 쓴다. 지금 채우기 색과 굵기를 그대로 쓴다.
   drawBoxLabel(label, r) {
     const fit = this.fitBoxLabel(label, r);
     textSize(fit.size);
-    const leading = fit.size * 1.3;
+    const leading = fit.size * this.LABEL_LEADING;
     const top = r.y + r.h / 2 - (fit.lines.length * leading) / 2 + (leading - fit.size) / 2;
     this.drawLines(fit.lines, r.x + r.w / 2, top, leading, CENTER);
   },
@@ -254,7 +280,7 @@ const UI = {
     fill(...this.COLOR.memo);
     stroke(...this.COLOR.line);
     strokeWeight(2);
-    rect(c.x, c.y, c.w, c.h, 6);
+    rect(c.x, c.y, c.w, c.h);
 
     noStroke();
     fill(...this.COLOR.ink);
@@ -287,8 +313,8 @@ const UI = {
     pop();
   },
 
-  // 고양이: '고양이'라고 적힌 작은 원
-  drawCat(x, y, r, hover) {
+  // 고양이: '고양이'라고 적힌 작은 원. 게임 방법 안내는 같은 모양에 다른 이름(남자친구)을 쓴다.
+  drawCat(x, y, r, hover, label = '고양이') {
     push();
     fill(255, 253, 248);
     stroke(...this.COLOR.line);
@@ -298,8 +324,8 @@ const UI = {
     fill(...this.COLOR.ink);
     textAlign(CENTER, CENTER);
     textStyle(BOLD);
-    this.fitTextSize('고양이', r * 2 - 8, 14, 10);
-    text('고양이', x, y);
+    this.fitTextSize(label, r * 2 - 8, 14, 10);
+    text(label, x, y);
     pop();
   },
 
@@ -321,6 +347,29 @@ const UI = {
     pop();
   },
 
+  // 디버그 표시: 아이소메트릭 블록의 판정 윤곽(다각형 목록)과 이름표
+  drawDebugOutline(polys, label) {
+    push();
+    noFill();
+    stroke(...this.COLOR.debug);
+    strokeWeight(1);
+    for (const poly of polys) {
+      beginShape();
+      for (const q of poly) vertex(q.x, q.y);
+      endShape(CLOSE);
+    }
+    if (label) {
+      const r = Iso.bbox(polys);
+      noStroke();
+      fill(...this.COLOR.debug);
+      textStyle(NORMAL);
+      textSize(11);
+      textAlign(LEFT, BOTTOM);
+      text(label, r.x, r.y - 1);
+    }
+    pop();
+  },
+
   // 디버그 표시(D)를 켜면 타이머 아래에 실시간 점수와 지금 끝나면 나올 엔딩을 띄운다.
   drawDebugInfo(lines) {
     push();
@@ -330,7 +379,7 @@ const UI = {
     const x = this.TIMER_BOX.x + this.TIMER_BOX.w - w;
     noStroke();
     fill(0, 0, 0, 180);
-    rect(x, 80, w, lines.length * 19 + 10, 4);
+    rect(x, 80, w, lines.length * 19 + 10);
     fill(255, 236, 120);
     textAlign(LEFT, CENTER);
     lines.forEach((l, i) => text(l, x + 10, 95 + i * 19));
@@ -347,7 +396,7 @@ const UI = {
     const w = textWidth(label) + 20;
     noStroke();
     fill(...this.COLOR.debugBadge);
-    rect(312, 26, w, 28, 4);
+    rect(312, 26, w, 28);
     fill(0);
     textAlign(LEFT, CENTER);
     text(label, 322, 40);

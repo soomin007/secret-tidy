@@ -68,8 +68,18 @@ const Pointer = {
 // type: 'item' 판정 물건, 'photo' 사진, 'trash' 쓰레기, 'laundry' 빨래, 'blanket' 이불, 'stain' 얼룩, 'spot' 놓는 곳
 // 그리는 순서는 놓는 곳, 이불과 얼룩, 나머지 물건이고, 누른 곳을 찾을 때는 그 반대로 위에 그린 것부터 본다.
 // 그래서 이불이나 얼룩 위에 다른 물건이 겹쳐 있으면 물건의 클릭과 드래그가 먼저다.
+// 자리는 구역 윗면의 격자 좌표 { u, v, w, d, h, z }다(src/iso.js). 화면의 윤곽은 블록을 투영한 육각형과
+// 그 위에 세운 이름표를 합친 모양이고, 클릭과 놓기는 이 윤곽으로 판정한다. 얼룩은 바닥의 타원 하나다.
+// 가구 앞면에 붙은 놓는 곳(서랍, 침대 밑)은 두께가 0인 블록(d나 w가 0)으로 적고, 그 면의 평행사변형이 윤곽이 된다.
 
 const Objects = {
+  TAG_H: 42,        // 이름표 높이. 16px 글자 두 줄(줄 간격 UI.LABEL_LEADING)이 들어간다
+  TAG_MIN_W: 96,    // 이름표 폭은 블록의 화면 폭(w + d)을 따르되 이 범위 안에 둔다
+  TAG_MAX_W: 170,
+  SLOT_TAG_W: 140,  // 가구 앞면 칸의 이름표 폭
+  TAG_OVERLAP: 12,  // 이름표 아래 끝이 블록 윗면의 가장 안쪽 꼭짓점보다 내려오는 길이. 윗면은 거의 다 보인다
+  BIG_TOP: 300,     // 화면 폭이 이보다 넓은 블록(이불)은 이름표를 윗면 가운데에 세운다
+
   byZone: null,   // 구역 id → 그리는 순서대로 늘어놓은 목록
   byId: null,
 
@@ -78,7 +88,9 @@ const Objects = {
     this.byId = {};
     for (const zone of Object.keys(LAYOUT.zones)) {
       const make = (id, type, def) => {
-        const obj = { id, type, zone, def, base: LAYOUT.zones[zone][id] };
+        const obj = { id, type, zone, def, spec: LAYOUT.zones[zone][id] };
+        // 처음 자리의 감싸는 사각형. 끌던 물건이 제자리로 돌아왔는지 볼 때와 이불 폭의 기준으로 쓴다.
+        obj.base = Iso.bbox(this.outline(obj, 0));
         this.byId[id] = obj;
         return obj;
       };
@@ -109,28 +121,78 @@ const Objects = {
     return true;
   },
 
-  // 지금 차지하는 사각형. 이불은 쓸 때마다 아래쪽 모서리는 그대로 두고 높이가 줄어든다.
-  rect(obj) {
-    const b = obj.base;
-    if (obj.type === 'blanket') {
-      const ratio = Gestures.foldedHeightRatio(GameState.cleaning[obj.id].strokes, CONFIG);
-      const h = b.h * ratio;
-      return { x: b.x, y: b.y + b.h - h, w: b.w, h };
-    }
-    return { x: b.x, y: b.y, w: b.w, h: b.h };
+  // 구역 윗면의 원점(u = v = z = 0인 점)의 화면 좌표
+  origin(zoneId) {
+    return LAYOUT.surfaces[zoneId].o;
   },
 
-  // 점이 물건 안에 있는지. 얼룩은 원이라서 사각형 모서리는 빼고 본다.
-  contains(obj, p) {
-    const r = this.rect(obj);
+  // 지금의 블록. 구겨진 이불은 쓸 때마다 두께(h)가 줄어 다 개면 처음의 FOLDED_HEIGHT만 남는다.
+  // strokes를 주면 그 횟수만큼 쓴 이불로 계산한다.
+  block(obj, strokes) {
+    const s = obj.spec;
+    if (obj.type !== 'blanket') return s;
+    const n = strokes === undefined ? GameState.cleaning[obj.id].strokes : strokes;
+    return Object.assign({}, s, { h: s.h * Gestures.foldedHeightRatio(n, CONFIG) });
+  },
+
+  isSlot(obj) {
+    return obj.spec.w === 0 || obj.spec.d === 0;
+  },
+
+  // 이름표 자리. 물건은 블록 바로 위에 세워 윗면 안쪽 끝만 조금 가리고, 이불처럼 큰 블록은 윗면 가운데에 둔다.
+  // 열린 상자는 앞쪽 모서리에, 가구 앞면의 칸은 그 가운데에 붙인다.
+  // 얼룩은 이름표 없이 타원 안에 이름을 쓰므로, 타원에 들어가는 가장 큰 사각형을 돌려준다.
+  tagRect(obj, b) {
+    b = b || this.block(obj);
+    const o = this.origin(obj.zone);
     if (obj.type === 'stain') {
-      const rx = r.w / 2;
-      const ry = r.h / 2;
-      const dx = (p.x - (r.x + rx)) / rx;
-      const dy = (p.y - (r.y + ry)) / ry;
-      return dx * dx + dy * dy <= 1;
+      const e = Iso.ellipse(o, b);
+      return { x: e.x - e.a / Math.SQRT2, y: e.y - e.b / Math.SQRT2, w: e.a * Math.SQRT2, h: e.b * Math.SQRT2 };
     }
-    return UI.inRect(p, r);
+    let tw = Math.max(this.TAG_MIN_W, Math.min(this.TAG_MAX_W, b.w + b.d));
+    let c;
+    if (obj.type === 'spot') {
+      const f = Iso.faces(o, b);
+      if (this.isSlot(obj)) {
+        const face = b.d === 0 ? f.left : f.right;
+        c = { x: face.reduce((s, q) => s + q.x, 0) / 4, y: face.reduce((s, q) => s + q.y, 0) / 4 };
+        tw = this.SLOT_TAG_W;
+      } else {
+        c = { x: f.left[1].x, y: (f.left[1].y + f.left[2].y) / 2 };
+      }
+      return { x: c.x - tw / 2, y: c.y - this.TAG_H / 2, w: tw, h: this.TAG_H };
+    }
+    c = Iso.topCenter(o, b);
+    if (b.w + b.d > this.BIG_TOP) return { x: c.x - tw / 2, y: c.y - this.TAG_H / 2, w: tw, h: this.TAG_H };
+    const back = Iso.faces(o, b).top[0];
+    return { x: c.x - tw / 2, y: back.y + this.TAG_OVERLAP - this.TAG_H, w: tw, h: this.TAG_H };
+  },
+
+  // 화면의 윤곽(볼록 다각형 목록). strokes는 block()과 같다.
+  outline(obj, strokes) {
+    const b = this.block(obj, strokes);
+    const o = this.origin(obj.zone);
+    if (obj.type === 'stain') return [Iso.ellipsePoly(Iso.ellipse(o, b))];
+    const f = Iso.faces(o, b);
+    const body = this.isSlot(obj) ? (b.d === 0 ? f.left : f.right) : f.hull;
+    return [body, Iso.rectPoly(this.tagRect(obj, b))];
+  },
+
+  // 지금 윤곽을 감싸는 사각형. 이불은 쓸 때마다 두께가 줄어 사각형 높이도 준다.
+  rect(obj) {
+    return Iso.bbox(this.outline(obj));
+  },
+
+  // 점이 물건의 윤곽 안에 있는지. 얼룩은 타원으로 본다.
+  contains(obj, p) {
+    if (obj.type === 'stain') return Iso.inEllipse(Iso.ellipse(this.origin(obj.zone), this.block(obj)), p);
+    return this.outline(obj).some(poly => Iso.inPoly(p, poly));
+  },
+
+  // 고양이가 이 물건 옆에 앉을 자리(원의 가운데). 블록 오른쪽 아래 모서리의 바로 오른쪽이다.
+  catSpot(obj) {
+    const f = Iso.faces(this.origin(obj.zone), this.block(obj));
+    return { x: f.right[2].x + 12, y: f.right[2].y };
   },
 
   // 점 아래에 있는 것 가운데 위에 그린 것. types를 주면 그 종류만 본다.
@@ -169,6 +231,7 @@ const Objects = {
   },
 
   // 이불을 한 번 쓴 손짓(누른 점 start에서 뗀 점 end까지)을 센다. 쓸기로 인정되면 true다.
+  // 기준 폭은 처음 자리의 화면 폭(base.w)이다. 이불은 두께만 줄어서 폭이 바뀌지 않는다.
   strokeBlanket(obj, start, end) {
     const st = GameState.cleaning[obj.id];
     if (st.done || !Gestures.isBlanketStroke(start, end, obj.base.w, CONFIG)) return false;

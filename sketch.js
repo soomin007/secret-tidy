@@ -123,6 +123,7 @@ function toLogical(sx, sy) {
 function setup() {
   createCanvas(windowWidth, windowHeight);
   textFont('sans-serif');
+  UI.tidyContent();
   updateView();
   window.addEventListener('keydown', handleDebugKey);
   Game.reset();

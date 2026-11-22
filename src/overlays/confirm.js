@@ -19,7 +19,7 @@ const OverlayConfirm = {
     fill(255);
     stroke(...UI.COLOR.line);
     strokeWeight(2);
-    rect(p.x, p.y, p.w, p.h, 6);
+    rect(p.x, p.y, p.w, p.h);
 
     noStroke();
     fill(...UI.COLOR.ink);

@@ -54,9 +54,9 @@ const OverlayFlashback = {
     const bar = this.BAR;
     noStroke();
     fill(255, 255, 255, 60);
-    rect(bar.x, bar.y, bar.w, bar.h, 5);
+    rect(bar.x, bar.y, bar.w, bar.h);
     fill(235);
-    rect(bar.x, bar.y, bar.w * ratio, bar.h, 5);
+    rect(bar.x, bar.y, bar.w * ratio, bar.h);
   },
 
   isClickable() {
